@@ -88,7 +88,7 @@ const appWindow = getCurrentWindow();
 const EMPTY_STATE_HTML = `<div class="empty-state">
   <h1>Markdown Viewer</h1>
   <p>Drag a <code>.md</code> file here, or <a id="empty-open" href="#">open one</a>.</p>
-  <p class="app-version"><a id="about-open" href="#">關於 / About</a></p>
+  <p class="app-version"><a id="about-open" href="#">关于 / About</a></p>
   <div id="recent-list"></div>
 </div>`;
 let closeAction: "window" | "doc" | "switch" = "window";
@@ -163,8 +163,8 @@ function addCopyButtons(): void {
       const btn = document.createElement("button");
       btn.className = "copy-btn";
       btn.type = "button";
-      btn.title = "複製";
-      btn.setAttribute("aria-label", "複製程式碼");
+      btn.title = "复制";
+      btn.setAttribute("aria-label", "复制代码");
       btn.textContent = "📋";
       btn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
@@ -178,7 +178,7 @@ function addCopyButtons(): void {
             btn.classList.remove("copied");
           }, 1400);
         } catch {
-          toast("複製失敗");
+          toast("复制失败");
         }
       });
       pre.appendChild(btn);
@@ -452,10 +452,13 @@ async function renderMarkdown(
 function setTitle(): void {
   const name = currentPath?.split(/[\\/]/).pop() ?? "Markdown Viewer";
   document.title = `${dirty ? "● " : ""}${name} — Markdown Viewer`;
-  saveBtn.hidden = !editMode;
+  // Respect the buttons the user hid in the toolbar customizer.
+  const userHidden = (id: string): boolean =>
+    document.getElementById(id)?.dataset.userHidden === "1";
+  saveBtn.hidden = !editMode || userHidden("save-btn");
   saveBtn.disabled = !dirty;
-  saveBtn.textContent = dirty ? "💾 Save*" : "💾 Saved";
-  closeDocBtn.hidden = !currentPath;
+  saveBtn.textContent = dirty ? "💾 保存*" : "💾 已保存";
+  closeDocBtn.hidden = !currentPath || userHidden("close-doc-btn");
 }
 
 // Close the current document and return to the home / empty-state screen.
@@ -645,7 +648,7 @@ ${article.innerHTML}
 
 async function exportHtml(): Promise<void> {
   if (!currentPath) {
-    toast("沒有開啟的檔案");
+    toast("没有打开的文件");
     return;
   }
   // Make sure the preview reflects the latest source (e.g. while editing).
@@ -655,9 +658,9 @@ async function exportHtml(): Promise<void> {
   const out = `${base}.html`;
   try {
     await invoke("write_md", { path: out, content: buildExportHtml() });
-    toast(`已匯出 ${out.split(/[\\/]/).pop()}`);
+    toast(`已导出 ${out.split(/[\\/]/).pop()}`);
   } catch (e) {
-    toast(`匯出失敗: ${String(e)}`);
+    toast(`导出失败: ${String(e)}`);
   }
 }
 
@@ -725,6 +728,226 @@ closeDocBtn.addEventListener("click", () => {
   }
 });
 
+// ---------- Floating toolbar: auto-hide + user customization ----------
+
+// Every toolbar button, in default order. `key` is what we persist; `locked`
+// entries can never be hidden (otherwise the Settings gear that opens this
+// very panel could disappear and strand the user).
+interface ToolbarButton {
+  id: string;
+  label: string;
+  glyph: string;
+  locked?: boolean;
+}
+const TOOLBAR_BUTTONS: ToolbarButton[] = [
+  { id: "open-btn", label: "打开文件", glyph: "📂" },
+  { id: "files-btn", label: "文件浏览器", glyph: "🗂" },
+  { id: "font-dec", label: "缩小字体", glyph: "A−" },
+  { id: "font-inc", label: "放大字体", glyph: "A+" },
+  { id: "wide-toggle", label: "宽版 / 窄版切换", glyph: "↔" },
+  { id: "theme-toggle", label: "切换配色主题", glyph: "🖥️" },
+  { id: "settings-btn", label: "设置", glyph: "⚙", locked: true },
+  { id: "save-btn", label: "保存", glyph: "💾" },
+  { id: "export-btn", label: "导出为 HTML", glyph: "⬇" },
+  { id: "edit-toggle", label: "切换编辑模式", glyph: "✎" },
+  { id: "toc-toggle", label: "切换大纲", glyph: "☰" },
+  { id: "close-doc-btn", label: "关闭文档", glyph: "✕" },
+];
+const TOOLBAR_ORDER_KEY = "toolbarOrder";
+const TOOLBAR_HIDDEN_KEY = "toolbarHidden";
+
+const toolbarEl = document.getElementById("toolbar") as HTMLElement;
+const toolbarHotzone = document.getElementById("toolbar-hotzone") as HTMLElement;
+const tbListEl = document.getElementById("tb-list") as HTMLElement;
+const tbResetBtn = document.getElementById("tb-reset") as HTMLButtonElement;
+
+// Saved order (ids), filtered to known buttons, then any missing ones appended
+// in default order so new buttons in a future version still show up.
+function readToolbarOrder(): string[] {
+  const known = new Set(TOOLBAR_BUTTONS.map((b) => b.id));
+  let saved: string[] = [];
+  try {
+    const raw = localStorage.getItem(TOOLBAR_ORDER_KEY);
+    if (raw) saved = (JSON.parse(raw) as string[]).filter((id) => known.has(id));
+  } catch {
+    /* corrupt value — fall back to the default order */
+  }
+  const missing = TOOLBAR_BUTTONS.map((b) => b.id).filter((id) => !saved.includes(id));
+  return [...saved, ...missing];
+}
+
+function readToolbarHidden(): Set<string> {
+  try {
+    const raw = localStorage.getItem(TOOLBAR_HIDDEN_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    /* corrupt value — treat as nothing hidden */
+  }
+  return new Set();
+}
+
+function saveToolbarState(order: string[], hidden: Set<string>): void {
+  localStorage.setItem(TOOLBAR_ORDER_KEY, JSON.stringify(order));
+  localStorage.setItem(TOOLBAR_HIDDEN_KEY, JSON.stringify([...hidden]));
+}
+
+// Buttons whose visibility is driven by app state, not by the user:
+// Save only exists in edit mode, ✕ only once a document is open.
+const STATE_DRIVEN = new Set(["save-btn", "close-doc-btn"]);
+
+function applyToolbarLayout(): void {
+  const order = readToolbarOrder();
+  const hidden = readToolbarHidden();
+
+  for (const id of order) {
+    const el = document.getElementById(id);
+    if (el) toolbarEl.appendChild(el);
+  }
+
+  for (const btn of TOOLBAR_BUTTONS) {
+    const el = document.getElementById(btn.id);
+    if (!el) continue;
+    const shouldHide = !btn.locked && hidden.has(btn.id);
+    if (STATE_DRIVEN.has(btn.id)) {
+      // Remember the user's preference here; setTitle() decides the rest.
+      el.dataset.userHidden = shouldHide ? "1" : "";
+    } else {
+      el.hidden = shouldHide;
+    }
+  }
+  // Re-apply state-driven visibility for the current document/edit mode.
+  if (typeof setTitle === "function" && currentPath !== null) setTitle();
+}
+
+// Build the checkbox + reorder list shown in Settings.
+function renderToolbarList(): void {
+  const order = readToolbarOrder();
+  const hidden = readToolbarHidden();
+  tbListEl.innerHTML = "";
+
+  order.forEach((id, index) => {
+    const btn = TOOLBAR_BUTTONS.find((b) => b.id === id);
+    if (!btn) return;
+
+    const row = document.createElement("div");
+    row.className = "tb-row" + (btn.locked ? " tb-locked" : "");
+
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = btn.locked || !hidden.has(id);
+    cb.disabled = !!btn.locked;
+    cb.addEventListener("change", () => {
+      const nextHidden = readToolbarHidden();
+      if (cb.checked) nextHidden.delete(id);
+      else nextHidden.add(id);
+      saveToolbarState(readToolbarOrder(), nextHidden);
+      applyToolbarLayout();
+    });
+
+    const glyph = document.createElement("span");
+    glyph.className = "tb-glyph";
+    glyph.textContent = btn.glyph;
+
+    const text = document.createElement("span");
+    text.className = "tb-label";
+    text.textContent = btn.label;
+
+    label.append(cb, glyph, text);
+    row.appendChild(label);
+
+    const up = document.createElement("button");
+    up.className = "tb-move";
+    up.textContent = "↑";
+    up.title = "上移";
+    up.disabled = index === 0;
+    up.addEventListener("click", () => moveToolbarItem(index, -1));
+
+    const down = document.createElement("button");
+    down.className = "tb-move";
+    down.textContent = "↓";
+    down.title = "下移";
+    down.disabled = index === order.length - 1;
+    down.addEventListener("click", () => moveToolbarItem(index, 1));
+
+    row.append(up, down);
+    tbListEl.appendChild(row);
+  });
+}
+
+function moveToolbarItem(index: number, delta: number): void {
+  const order = readToolbarOrder();
+  const target = index + delta;
+  if (target < 0 || target >= order.length) return;
+  [order[index], order[target]] = [order[target], order[index]];
+  saveToolbarState(order, readToolbarHidden());
+  applyToolbarLayout();
+  renderToolbarList();
+}
+
+tbResetBtn.addEventListener("click", () => {
+  localStorage.removeItem(TOOLBAR_ORDER_KEY);
+  localStorage.removeItem(TOOLBAR_HIDDEN_KEY);
+  applyToolbarLayout();
+  renderToolbarList();
+});
+
+applyToolbarLayout();
+
+// --- Auto-hide: the bar sits off-screen until the top edge is approached. ---
+let toolbarPinned = false; // dialogs force the bar to stay visible
+let toolbarHideTimer: number | undefined;
+
+function showToolbar(): void {
+  window.clearTimeout(toolbarHideTimer);
+  document.body.classList.add("toolbar-shown");
+}
+function hideToolbar(): void {
+  // Keep it up while the keyboard focus lives inside the bar. A mouse click
+  // also focuses a button, so only honour focus that came from the keyboard.
+  if (toolbarPinned) return;
+  const focused = document.activeElement;
+  if (focused && toolbarEl.contains(focused) && focused.matches(":focus-visible")) {
+    return;
+  }
+  document.body.classList.remove("toolbar-shown");
+}
+function hideToolbarSoon(): void {
+  window.clearTimeout(toolbarHideTimer);
+  toolbarHideTimer = window.setTimeout(hideToolbar, 220);
+}
+
+// Approaching the top edge reveals the bar; leaving it starts the hide timer.
+toolbarHotzone.addEventListener("mouseenter", showToolbar);
+toolbarHotzone.addEventListener("mouseleave", hideToolbarSoon);
+toolbarEl.addEventListener("mouseenter", showToolbar);
+toolbarEl.addEventListener("mouseleave", hideToolbarSoon);
+
+// Keyboard users: focusing any button must bring the bar into view.
+toolbarEl.addEventListener("focusin", showToolbar);
+toolbarEl.addEventListener("focusout", () => {
+  // Wait for the focus to settle before deciding to hide.
+  window.setTimeout(hideToolbar, 0);
+});
+
+// Leaving the window entirely also hides it.
+document.addEventListener("mouseleave", hideToolbarSoon);
+
+// Expose a pin/unpin pair for dialogs opened from the toolbar.
+function setToolbarPinned(pinned: boolean): void {
+  toolbarPinned = pinned;
+  if (pinned) showToolbar();
+}
+
+// First run: show the bar briefly so new users discover it.
+if (localStorage.getItem("toolbarSeen") !== "1") {
+  showToolbar();
+  window.setTimeout(() => {
+    localStorage.setItem("toolbarSeen", "1");
+    hideToolbar();
+  }, 2200);
+}
+
 // Content font scaling (persisted).
 let fontScale = parseFloat(localStorage.getItem("fontScale") ?? "1") || 1;
 function applyFontScale(): void {
@@ -762,9 +985,9 @@ const THEME_ICON: Record<ThemePref, string> = {
   dark: "🌙",
 };
 const THEME_TITLE: Record<ThemePref, string> = {
-  system: "主題:跟隨系統 (點擊切換)",
-  light: "主題:亮色 (點擊切換)",
-  dark: "主題:暗色 (點擊切換)",
+  system: "主题：跟随系统 （点击切换）",
+  light: "主题：亮色 （点击切换）",
+  dark: "主题：暗色 （点击切换）",
 };
 function applyTheme(): void {
   document.documentElement.dataset.theme = themePref;
@@ -802,19 +1025,47 @@ interface FontOption {
 const DEFAULT_LATIN_STACK =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial';
 const LATIN_FONTS: FontOption[] = [
-  { id: "system", label: "系統預設 Sans", stack: DEFAULT_LATIN_STACK, generic: "sans-serif" },
+  { id: "system", label: "系统默认 Sans", stack: DEFAULT_LATIN_STACK, generic: "sans-serif" },
   { id: "serif", label: "Serif (Georgia)", stack: 'Georgia, "Times New Roman"', generic: "serif" },
   { id: "helvetica", label: "Helvetica / Arial", stack: "Helvetica, Arial", generic: "sans-serif" },
   { id: "verdana", label: "Verdana", stack: "Verdana, Geneva", generic: "sans-serif" },
-  { id: "mono", label: "等寬 Mono", stack: "ui-monospace, Consolas", generic: "monospace" },
+  { id: "mono", label: "等宽 Mono", stack: "ui-monospace, Consolas", generic: "monospace" },
 ];
 const CJK_FONTS: FontOption[] = [
-  { id: "system", label: "系統預設", stack: "" },
-  { id: "jhenghei", label: "微軟正黑體", stack: '"Microsoft JhengHei", "Microsoft YaHei"' },
-  { id: "pingfang", label: "蘋方 PingFang", stack: '"PingFang TC", "PingFang SC"' },
-  { id: "notosans", label: "思源黑體 Noto Sans", stack: '"Noto Sans TC", "Noto Sans CJK TC"' },
-  { id: "notoserif", label: "思源宋體 Noto Serif", stack: '"Noto Serif TC", "Noto Serif CJK TC"' },
-  { id: "kai", label: "標楷體", stack: '"DFKai-SB", "BiauKai", "Kaiti TC"' },
+  { id: "system", label: "系统默认", stack: "" },
+  {
+    id: "yahei",
+    label: "微软雅黑 / 苹方",
+    stack: '"Microsoft YaHei", "PingFang SC", "Hiragino Sans GB"',
+  },
+  {
+    id: "notosans",
+    label: "思源黑体 Noto Sans",
+    stack: '"Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC"',
+  },
+  {
+    id: "notoserif",
+    label: "思源宋体 Noto Serif",
+    stack: '"Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC"',
+  },
+  { id: "kai", label: "楷体", stack: 'KaiTi, "Kaiti SC", STKaiti' },
+  { id: "simsun", label: "宋体", stack: 'SimSun, "Songti SC", STSong' },
+  // Traditional-Chinese faces, kept for reading 繁體 documents.
+  {
+    id: "pmingliu",
+    label: "繁体 · 微软正黑体",
+    stack: '"Microsoft JhengHei", "PingFang TC"',
+  },
+  {
+    id: "pmingliu_song",
+    label: "繁体 · 新细明体",
+    stack: '"PMingLiU", "MingLiU", "Songti TC"',
+  },
+  {
+    id: "pmingliu_kai",
+    label: "繁体 · 标楷体",
+    stack: '"DFKai-SB", "BiauKai", "Kaiti TC"',
+  },
 ];
 
 const settingsBtn = document.getElementById("settings-btn") as HTMLButtonElement;
@@ -835,7 +1086,7 @@ function fillFontSelect(sel: HTMLSelectElement, opts: FontOption[]): void {
   // "Custom" lets the user type any installed font family by name.
   const custom = document.createElement("option");
   custom.value = "custom";
-  custom.textContent = "自訂… / Custom…";
+  custom.textContent = "自定义… / Custom…";
   sel.appendChild(custom);
 }
 fillFontSelect(fontLatinSel, LATIN_FONTS);
@@ -934,12 +1185,18 @@ async function populateInstalledFonts(): Promise<void> {
 
 function openSettings(): void {
   settingsModal.hidden = false;
+  renderToolbarList();
   void populateInstalledFonts();
 }
 function closeSettings(): void {
   settingsModal.hidden = true;
+  setToolbarPinned(false);
+  hideToolbarSoon();
 }
-settingsBtn.addEventListener("click", openSettings);
+settingsBtn.addEventListener("click", () => {
+  setToolbarPinned(true);
+  openSettings();
+});
 (document.getElementById("settings-close") as HTMLButtonElement).addEventListener(
   "click",
   closeSettings,
@@ -973,7 +1230,7 @@ function showUpdateStatus(text: string, isNew = false, url?: string): void {
   updateStatus.textContent = text;
   if (url) {
     const a = document.createElement("a");
-    a.textContent = "前往下載";
+    a.textContent = "前往下载";
     a.href = "#";
     a.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -985,7 +1242,7 @@ function showUpdateStatus(text: string, isNew = false, url?: string): void {
 
 async function checkUpdate(): Promise<void> {
   updateCheckBtn.disabled = true;
-  showUpdateStatus("檢查中…");
+  showUpdateStatus("检查中…");
   try {
     const res = await fetch(
       "https://api.github.com/repos/craig7351/bookMDViewer/releases/latest",
@@ -996,12 +1253,12 @@ async function checkUpdate(): Promise<void> {
     const latest = (data.tag_name ?? "").replace(/^v/, "");
     if (!latest) throw new Error("no tag");
     if (compareVersions(latest, __APP_VERSION__) > 0) {
-      showUpdateStatus(`發現新版 v${latest}`, true, data.html_url);
+      showUpdateStatus(`发现新版 v${latest}`, true, data.html_url);
     } else {
       showUpdateStatus("已是最新版本 ✓");
     }
   } catch {
-    showUpdateStatus("無法檢查更新(請確認網路)");
+    showUpdateStatus("无法检查更新（请确认网络）");
   } finally {
     updateCheckBtn.disabled = false;
   }
@@ -1060,7 +1317,7 @@ function renderRecents(): void {
   const list = getRecents();
   if (!list.length) return;
   const h = document.createElement("h3");
-  h.textContent = "最近開啟";
+  h.textContent = "最近打开";
   host.appendChild(h);
   list.forEach((p) => {
     const a = document.createElement("a");
@@ -1137,7 +1394,7 @@ function showFileMenu(ev: MouseEvent, path: string): void {
   const menu = document.createElement("div");
   menu.className = "ctx-menu";
   const item = document.createElement("button");
-  item.textContent = "在新視窗開啟";
+  item.textContent = "在新窗口打开";
   item.addEventListener("click", () => {
     closeFileMenu();
     void invoke("open_new_window", { path });
@@ -1158,7 +1415,7 @@ async function renderFiles(dir: string | null): Promise<void> {
     filesPanel.innerHTML = "";
     const hint = document.createElement("div");
     hint.className = "files-hint";
-    hint.textContent = "開啟檔案後可瀏覽其目錄";
+    hint.textContent = "打开文件后可浏览其目录";
     filesPanel.appendChild(hint);
     return;
   }
@@ -1353,7 +1610,7 @@ function runFind(backwards: boolean): void {
       find: (s: string, c: boolean, b: boolean, w: boolean) => boolean;
     }
   ).find(q, false, backwards, true);
-  findCount.textContent = found ? "" : "無相符";
+  findCount.textContent = found ? "" : "无相符";
 }
 findInput.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter") {

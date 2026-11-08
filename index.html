@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
@@ -8,41 +8,44 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <div id="toolbar">
-      <button id="open-btn" class="icon-btn" title="Open file (Ctrl+O)" aria-label="Open file">📂</button>
-      <button id="files-btn" class="icon-btn" title="File explorer (Ctrl+B)" aria-label="File explorer">🗂</button>
-      <button id="font-dec" class="icon-btn" title="Decrease font (Ctrl+-)" aria-label="Decrease font size">A−</button>
-      <button id="font-inc" class="icon-btn" title="Increase font (Ctrl++)" aria-label="Increase font size">A+</button>
-      <button id="wide-toggle" class="icon-btn" title="寬版 / 窄版切換 (Ctrl+Shift+\)" aria-label="Toggle wide content">↔</button>
-      <button id="theme-toggle" class="icon-btn" title="主題:跟隨系統 (點擊切換)" aria-label="Toggle color theme">🖥️</button>
-      <button id="settings-btn" class="icon-btn" title="設定" aria-label="Settings">⚙</button>
-      <button id="save-btn" title="Save (Ctrl+S)" aria-label="Save" hidden>💾 Save</button>
-      <button id="export-btn" title="Export to HTML" aria-label="Export to HTML">⬇ HTML</button>
-      <button id="edit-toggle" title="Toggle edit mode (Ctrl+E)" aria-label="Toggle edit mode">✎ Edit</button>
-      <button id="toc-toggle" title="Toggle outline (Ctrl+\)" aria-label="Toggle outline">☰</button>
-      <button id="close-doc-btn" class="icon-btn" title="Close document — back to home" aria-label="Close document" hidden>✕</button>
+    <!-- Invisible strip along the top edge that reveals the floating toolbar
+         when approached. Without it the hidden toolbar could never be reached. -->
+    <div id="toolbar-hotzone" aria-hidden="true"></div>
+    <div id="toolbar" role="toolbar" aria-label="工具栏">
+      <button id="open-btn" class="icon-btn" title="打开文件 (Ctrl+O)" aria-label="打开文件">📂</button>
+      <button id="files-btn" class="icon-btn" title="文件浏览器 (Ctrl+B)" aria-label="文件浏览器">🗂</button>
+      <button id="font-dec" class="icon-btn" title="缩小字体 (Ctrl+-)" aria-label="缩小字体">A−</button>
+      <button id="font-inc" class="icon-btn" title="放大字体 (Ctrl++)" aria-label="放大字体">A+</button>
+      <button id="wide-toggle" class="icon-btn" title="宽版 / 窄版切换 (Ctrl+Shift+\)" aria-label="切换宽版内容">↔</button>
+      <button id="theme-toggle" class="icon-btn" title="主题：跟随系统（点击切换）" aria-label="切换配色主题">🖥️</button>
+      <button id="settings-btn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
+      <button id="save-btn" title="保存 (Ctrl+S)" aria-label="保存" hidden>💾 保存</button>
+      <button id="export-btn" title="导出为 HTML" aria-label="导出为 HTML">⬇ HTML</button>
+      <button id="edit-toggle" title="切换编辑模式 (Ctrl+E)" aria-label="切换编辑模式">✎ 编辑</button>
+      <button id="toc-toggle" title="切换大纲 (Ctrl+\)" aria-label="切换大纲">☰</button>
+      <button id="close-doc-btn" class="icon-btn" title="关闭文档 — 回到首页" aria-label="关闭文档" hidden>✕</button>
     </div>
     <div id="toast" hidden></div>
     <div id="find-bar" hidden>
-      <input id="find-input" type="text" placeholder="Find…" spellcheck="false" />
+      <input id="find-input" type="text" placeholder="查找…" spellcheck="false" />
       <span id="find-count"></span>
-      <button id="find-prev" title="Previous (Shift+Enter)" aria-label="Previous match">↑</button>
-      <button id="find-next" title="Next (Enter)" aria-label="Next match">↓</button>
-      <button id="find-close" title="Close (Esc)" aria-label="Close find">✕</button>
+      <button id="find-prev" title="上一个 (Shift+Enter)" aria-label="上一个匹配项">↑</button>
+      <button id="find-next" title="下一个 (Enter)" aria-label="下一个匹配项">↓</button>
+      <button id="find-close" title="关闭 (Esc)" aria-label="关闭查找">✕</button>
     </div>
     <div id="layout">
-      <nav id="files" aria-label="File explorer"></nav>
-      <nav id="toc" aria-label="Table of contents"></nav>
+      <nav id="files" aria-label="文件浏览器"></nav>
+      <nav id="toc" aria-label="目录大纲"></nav>
       <textarea
         id="editor"
         spellcheck="false"
-        placeholder="Markdown source…"
+        placeholder="Markdown 源码…"
       ></textarea>
       <article id="content" class="markdown-body">
         <div class="empty-state">
           <h1>Markdown Viewer</h1>
-          <p>Drag a <code>.md</code> file here, or <a id="empty-open" href="#">open one</a>.</p>
-          <p class="app-version"><a id="about-open" href="#">關於 / About</a></p>
+          <p>把 <code>.md</code> 文件拖到这里，或<a id="empty-open" href="#">打开一个</a>。</p>
+          <p class="app-version"><a id="about-open" href="#">关于 / About</a></p>
           <div id="recent-list"></div>
         </div>
       </article>
@@ -50,44 +53,55 @@
 
     <div id="diagram-modal" hidden>
       <div id="diagram-toolbar">
-        <button id="dg-zoomout" title="Zoom out">−</button>
+        <button id="dg-zoomout" title="缩小">−</button>
         <span id="dg-zoom">100%</span>
-        <button id="dg-zoomin" title="Zoom in">+</button>
-        <button id="dg-reset" title="Fit to screen">Reset</button>
-        <button id="dg-close" title="Close (Esc)">✕</button>
+        <button id="dg-zoomin" title="放大">+</button>
+        <button id="dg-reset" title="适应屏幕">重置</button>
+        <button id="dg-close" title="关闭 (Esc)">✕</button>
       </div>
       <div id="diagram-stage"></div>
     </div>
 
     <div id="settings-modal" hidden>
       <div class="modal-box settings-box">
-        <div class="settings-title">設定 / Settings</div>
+        <div class="settings-title">设置 / Settings</div>
         <div class="settings-row">
-          <label for="font-latin">英文字型 / Latin font</label>
+          <label for="font-latin">英文字体 / Latin font</label>
           <select id="font-latin"></select>
         </div>
-        <input id="font-latin-custom" class="font-custom" list="font-list" placeholder="輸入字型名稱…" spellcheck="false" autocomplete="off" hidden />
+        <input id="font-latin-custom" class="font-custom" list="font-list" placeholder="输入字体名称…" spellcheck="false" autocomplete="off" hidden />
         <div class="settings-row">
-          <label for="font-cjk">中文字型 / CJK font</label>
+          <label for="font-cjk">中文字体 / CJK font</label>
           <select id="font-cjk"></select>
         </div>
-        <input id="font-cjk-custom" class="font-custom" list="font-list" placeholder="輸入字型名稱…" spellcheck="false" autocomplete="off" hidden />
+        <input id="font-cjk-custom" class="font-custom" list="font-list" placeholder="输入字体名称…" spellcheck="false" autocomplete="off" hidden />
         <datalist id="font-list"></datalist>
         <p class="settings-preview" id="font-preview">
           The quick brown fox — 敏捷的棕色狐狸 0123
         </p>
 
         <div class="settings-sep"></div>
-        <div class="settings-title">軟體更新 / Updates</div>
+        <div class="settings-title">工具栏 / Toolbar</div>
+        <p class="settings-hint">
+          勾选要显示的按钮，用 ↑ ↓ 调整顺序。设置按钮固定显示，不能隐藏。
+        </p>
+        <div id="tb-list" class="tb-list"></div>
+        <p class="settings-hint tb-hint-bottom">
+          鼠标移到窗口顶部边缘即可唤出工具栏，移开自动收起。
+        </p>
+
+        <div class="settings-sep"></div>
+        <div class="settings-title">软件更新 / Updates</div>
         <div class="settings-row">
-          <span class="settings-ver">目前版本 <span id="update-current"></span></span>
-          <button id="update-check">檢查更新</button>
+          <span class="settings-ver">当前版本 <span id="update-current"></span></span>
+          <button id="update-check">检查更新</button>
         </div>
         <div class="update-status" id="update-status" hidden></div>
 
         <div class="modal-actions">
-          <button id="settings-reset">重設字型</button>
-          <button id="settings-close">關閉</button>
+          <button id="settings-reset">重置字体</button>
+          <button id="tb-reset">恢复默认工具栏</button>
+          <button id="settings-close">关闭</button>
         </div>
       </div>
     </div>
@@ -98,22 +112,22 @@
         <div class="about-name">Markdown Viewer</div>
         <div class="about-ver" id="about-version"></div>
         <p class="about-desc">
-          輕量、完全本機、開源的 Markdown 檢視器與編輯器。<br />
+          轻量、完全本地、开源的 Markdown 查看器与编辑器。<br />
           Lightweight, local-first, open-source Markdown viewer &amp; editor.
         </p>
         <div class="modal-actions">
           <button id="about-github">GitHub ↗</button>
-          <button id="about-close">關閉</button>
+          <button id="about-close">关闭</button>
         </div>
       </div>
     </div>
 
     <div id="close-modal" hidden>
       <div class="modal-box">
-        <p>有未存檔的變更,要在關閉前儲存嗎?</p>
+        <p>有未保存的变更，要在关闭前保存吗？</p>
         <div class="modal-actions">
-          <button id="modal-save">儲存並關閉</button>
-          <button id="modal-discard">不儲存關閉</button>
+          <button id="modal-save">保存并关闭</button>
+          <button id="modal-discard">不保存关闭</button>
           <button id="modal-cancel">取消</button>
         </div>
       </div>

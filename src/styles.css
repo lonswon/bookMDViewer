@@ -216,13 +216,55 @@ body {
   background: var(--code-bg);
 }
 
+/* ---------- Floating toolbar (auto-hide on hover) ---------- */
+/* An invisible strip along the very top edge. It is the only thing that can
+   receive the mouse while the toolbar itself is hidden, so it is what wakes
+   the toolbar up. */
+#toolbar-hotzone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  z-index: 11;
+  pointer-events: auto;
+}
+
 #toolbar {
   position: fixed;
-  top: 10px;
+  /* Sits flush against the bottom of the hot zone, so moving the pointer down
+     from the top edge passes straight into the bar with no dead gap. */
+  top: 12px;
   right: 14px;
-  z-index: 10;
+  /* Above the hot zone, so the strip never steals clicks from the buttons. */
+  z-index: 12;
   display: flex;
   gap: 6px;
+  /* Hidden by default; revealed by #toolbar-hotzone / :focus-within. */
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+/* Revealed by JS (hot zone / bar hover / keyboard focus / dialog pin).
+   Note: no `:focus-within` here on purpose — clicking a button with the mouse
+   also focuses it, and that would pin the bar open forever. Keyboard focus is
+   detected in JS via :focus-visible instead. */
+body.toolbar-shown #toolbar {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* Respect the OS "reduce motion" setting: fade only, no sliding. */
+@media (prefers-reduced-motion: reduce) {
+  #toolbar {
+    transform: none;
+    transition: opacity 0.12s ease;
+  }
 }
 #toolbar button {
   height: 32px;
@@ -279,11 +321,8 @@ body {
   max-width: none;
 }
 
-/* Wide mode: let reading content fill the available width instead of the
-   centered 860px column (useful for wide tables on large screens). */
-#layout.wide-content .markdown-body {
-  max-width: none;
-}
+/* Wide mode toggles the reading measure via --reading-width (see below);
+   the toggle button just reflects the active state. */
 #wide-toggle.on {
   color: var(--accent);
 }
@@ -647,6 +686,88 @@ body {
   background: var(--border);
   margin: 6px 0 14px;
 }
+
+/* ---------- Toolbar customizer (inside Settings) ---------- */
+.settings-hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.tb-hint-bottom {
+  margin: 10px 0 14px;
+}
+.tb-list {
+  max-height: 232px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  margin-bottom: 4px;
+}
+.tb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.tb-row:hover {
+  background: var(--code-bg);
+}
+.tb-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.tb-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.tb-row .tb-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tb-row .tb-glyph {
+  flex: 0 0 auto;
+  width: 22px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.tb-move {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tb-move:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.tb-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.tb-row.tb-locked .tb-label::after {
+  content: " 固定显示";
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.tb-row.tb-locked input[type="checkbox"] {
+  cursor: default;
+}
 .settings-ver {
   color: var(--muted);
   font-size: 13.5px;
@@ -761,13 +882,43 @@ body {
   min-width: 0;
   height: 100vh;
   overflow-y: auto;
-  max-width: 860px;
-  margin: 0 auto;
+  /* Full-width scroll container, so the scrollbar stays on the window edge.
+     The reading column is centered by the flex rules below instead of by
+     centering this element (which would strand the scrollbar mid-window). */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: none;
+  margin: 0;
   /* Large bottom padding so any heading (even the last) can scroll to the top
      when clicked in the outline. */
   padding: 32px 40px 80vh;
+  /* Reserve the scrollbar gutter on both sides so the reading column stays
+     optically centered: without this the classic scrollbar eats ~12px off the
+     right and shifts the whole column left by half of it. */
+  scrollbar-gutter: stable both-edges;
   word-wrap: break-word;
   font-size: calc(16px * var(--content-scale, 1));
+}
+
+/* Every block gets the same capped width and is centered by the flex parent,
+   so all blocks share one left edge — a true single column, and it stays
+   centered whether or not the outline sidebar is open. */
+#content > * {
+  width: 100%;
+  max-width: var(--reading-width);
+  flex: 0 0 auto;
+}
+
+:root {
+  --reading-width: 860px;
+}
+#layout.wide-content {
+  --reading-width: 1040px;
+}
+/* Split edit mode: the preview fills its half, no centered measure. */
+#layout.mode-edit #content > * {
+  max-width: none;
 }
 
 .empty-state {
