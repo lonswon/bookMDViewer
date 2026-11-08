@@ -217,17 +217,23 @@ body {
 }
 
 /* ---------- Floating toolbar (auto-hide on hover) ---------- */
-/* An invisible strip along the very top edge. It is the only thing that can
-   receive the mouse while the toolbar itself is hidden, so it is what wakes
-   the toolbar up. */
+/* An invisible trapezoid along the top edge, sized to the toolbar: a thin
+   sliver on the left that widens toward the right edge where the toolbar
+   lives. It is the only thing listening while the toolbar is hidden, so it is
+   what wakes the toolbar up. The wedge shape means a casual move toward the
+   top-right is enough to trigger it, while the thin left end avoids catching
+   the pointer when the user aims at the top-left of the window. */
 #toolbar-hotzone {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
-  height: 12px;
+  right: var(--toolbar-right, 14px);
+  /* Width is measured from the live toolbar by syncToolbarHotzone(). */
+  width: var(--toolbar-width, 620px);
+  height: 34px;
   z-index: 11;
   pointer-events: auto;
+  /* Trapezoid: narrow at the left edge, full height at the right edge. */
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 26%);
 }
 
 #toolbar {
@@ -635,13 +641,85 @@ body.toolbar-shown #toolbar {
   display: none;
 }
 .settings-box {
-  width: 380px;
+  width: 420px;
   max-width: 90vw;
+  /* Fixed floor keeps the dialog from resizing when the user switches tabs. */
+  min-height: 470px;
+  display: flex;
+  flex-direction: column;
+}
+.settings-box .modal-actions {
+  margin-top: auto;
+}
+.settings-head {
+  margin-bottom: 16px;
 }
 .settings-title {
   font-size: 16px;
   font-weight: 700;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+}
+
+/* ---------- Settings tabs ---------- */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+.settings-tab {
+  padding: 6px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: -1px;
+}
+.settings-tab:hover {
+  color: var(--fg);
+  background: var(--code-bg);
+}
+.settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.settings-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Panes are independent sections; only one is shown at a time. */
+.settings-pane {
+  display: none;
+}
+.settings-pane.active {
+  display: block;
+}
+.settings-pane-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.settings-pane-actions button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.settings-pane-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .settings-row {
   display: flex;

@@ -86,7 +86,7 @@ const closeDocBtn = document.getElementById("close-doc-btn") as HTMLButtonElemen
 const toastEl = document.getElementById("toast") as HTMLElement;
 const appWindow = getCurrentWindow();
 const EMPTY_STATE_HTML = `<div class="empty-state">
-  <h1>Markdown Viewer</h1>
+  <h1>Markdown阅读器</h1>
   <p>Drag a <code>.md</code> file here, or <a id="empty-open" href="#">open one</a>.</p>
   <p class="app-version"><a id="about-open" href="#">关于 / About</a></p>
   <div id="recent-list"></div>
@@ -99,6 +99,8 @@ let editMode = false;
 let dirty = false;
 let suppressReloadUntil = 0;
 let spy: IntersectionObserver | null = null;
+// Last title pushed to the native window, to avoid redundant IPC.
+let lastNativeTitle = "";
 
 // Build the left-hand outline from the rendered headings.
 function buildToc(): void {
@@ -450,8 +452,18 @@ async function renderMarkdown(
 }
 
 function setTitle(): void {
-  const name = currentPath?.split(/[\\/]/).pop() ?? "Markdown Viewer";
-  document.title = `${dirty ? "● " : ""}${name} — Markdown Viewer`;
+  const name = currentPath?.split(/[\\/]/).pop() ?? "Markdown阅读器";
+  document.title = `${dirty ? "● " : ""}${name} — Markdown阅读器`;
+  // Also drive the real native window title — that is what the title bar shows.
+  const nativeTitle = currentPath
+    ? `${dirty ? "● " : ""}${name}`
+    : "Markdown阅读器";
+  if (nativeTitle !== lastNativeTitle) {
+    lastNativeTitle = nativeTitle;
+    void appWindow.setTitle(nativeTitle).catch(() => {
+      /* outside Tauri (plain browser preview) — ignore */
+    });
+  }
   // Respect the buttons the user hid in the toolbar customizer.
   const userHidden = (id: string): boolean =>
     document.getElementById(id)?.dataset.userHidden === "1";
@@ -817,6 +829,7 @@ function applyToolbarLayout(): void {
   }
   // Re-apply state-driven visibility for the current document/edit mode.
   if (typeof setTitle === "function" && currentPath !== null) setTitle();
+  if (typeof syncToolbarHotzone === "function") syncToolbarHotzone();
 }
 
 // Build the checkbox + reorder list shown in Settings.
@@ -893,6 +906,27 @@ tbResetBtn.addEventListener("click", () => {
 });
 
 applyToolbarLayout();
+
+// --- Hot zone sizing: the trapezoid must match the live toolbar width. ---
+// The toolbar is right-anchored and sized by its content, so its width changes
+// whenever buttons are shown, hidden or reordered. Mirror that width (plus the
+// bar's right offset) onto the hot zone so the two always line up.
+function syncToolbarHotzone(): void {
+  const bar = toolbarEl.getBoundingClientRect();
+  const root = document.documentElement;
+  if (bar.width > 0) {
+    root.style.setProperty("--toolbar-width", `${Math.ceil(bar.width)}px`);
+    const right = Math.round(window.innerWidth - bar.right);
+    root.style.setProperty("--toolbar-right", `${right}px`);
+  }
+}
+
+// Keep it in sync as the window, the toolbar contents, and fonts change.
+window.addEventListener("resize", syncToolbarHotzone);
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(syncToolbarHotzone).observe(toolbarEl);
+}
+syncToolbarHotzone();
 
 // --- Auto-hide: the bar sits off-screen until the top edge is approached. ---
 let toolbarPinned = false; // dialogs force the bar to stay visible
@@ -1183,8 +1217,46 @@ async function populateInstalledFonts(): Promise<void> {
   }
 }
 
+// ---------- Settings tabs ----------
+type SettingsTab = "font" | "toolbar" | "about";
+let activeSettingsTab: SettingsTab = "font";
+
+function activateSettingsTab(tab: SettingsTab): void {
+  activeSettingsTab = tab;
+  for (const btn of settingsModal.querySelectorAll<HTMLElement>(".settings-tab")) {
+    const isActive = btn.dataset.tab === tab;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", String(isActive));
+    btn.tabIndex = isActive ? 0 : -1;
+  }
+  for (const pane of settingsModal.querySelectorAll<HTMLElement>(".settings-pane")) {
+    pane.classList.toggle("active", pane.id === `pane-${tab}`);
+  }
+  // The toolbar list is rebuilt on entry so it always mirrors saved state.
+  if (tab === "toolbar") renderToolbarList();
+}
+
+for (const btn of settingsModal.querySelectorAll<HTMLElement>(".settings-tab")) {
+  btn.addEventListener("click", () => {
+    activateSettingsTab(btn.dataset.tab as SettingsTab);
+  });
+  // Left/Right arrows move between tabs, as expected of a tablist.
+  btn.addEventListener("keydown", (ev) => {
+    const order: SettingsTab[] = ["font", "toolbar", "about"];
+    const i = order.indexOf(btn.dataset.tab as SettingsTab);
+    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+    ev.preventDefault();
+    const next = ev.key === "ArrowRight"
+      ? order[(i + 1) % order.length]
+      : order[(i - 1 + order.length) % order.length];
+    activateSettingsTab(next);
+    settingsModal.querySelector<HTMLElement>(`.settings-tab[data-tab="${next}"]`)?.focus();
+  });
+}
+
 function openSettings(): void {
   settingsModal.hidden = false;
+  activateSettingsTab(activeSettingsTab);
   renderToolbarList();
   void populateInstalledFonts();
 }
@@ -1245,7 +1317,7 @@ async function checkUpdate(): Promise<void> {
   showUpdateStatus("检查中…");
   try {
     const res = await fetch(
-      "https://api.github.com/repos/craig7351/bookMDViewer/releases/latest",
+      "https://api.github.com/repos/lonswon/bookMDViewer/releases/latest",
       { headers: { Accept: "application/vnd.github+json" } },
     );
     if (!res.ok) throw new Error(String(res.status));
@@ -1266,7 +1338,7 @@ async function checkUpdate(): Promise<void> {
 updateCheckBtn.addEventListener("click", () => void checkUpdate());
 
 // ---------- About dialog (version info) ----------
-const REPO_URL = "https://github.com/craig7351/bookMDViewer";
+const REPO_URL = "https://github.com/lonswon/bookMDViewer";
 const aboutModal = document.getElementById("about-modal") as HTMLElement;
 const aboutVersion = document.getElementById("about-version") as HTMLElement;
 aboutVersion.textContent = `v${__APP_VERSION__}`;
@@ -1810,6 +1882,10 @@ async function init(): Promise<void> {
   // Signal the backend that listeners are ready, flushing any file-open
   // requests that arrived during cold start (fixes macOS first-open blank).
   await invoke("frontend_ready");
+
+  // Establish the initial window title (home screen) before any document
+  // opens, so the native title bar never shows a stale name.
+  setTitle();
 
   // Populate the empty-state recent-files list.
   renderRecents();
