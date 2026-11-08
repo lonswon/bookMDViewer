@@ -232,8 +232,8 @@ body {
   height: 34px;
   z-index: 11;
   pointer-events: auto;
-  /* Trapezoid: narrow at the left edge, full height at the right edge. */
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 26%);
+  /* Trapezoid: half-height at the left edge, full height at the right. */
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 50%);
 }
 
 #toolbar {
@@ -287,11 +287,8 @@ body.toolbar-shown #toolbar {
   color: var(--fg);
   border-color: var(--accent);
 }
-#toc-toggle {
-  width: 32px;
-  padding: 0;
-  font-size: 15px;
-}
+/* Outline uses the same 36px box as every other icon button so the
+   toolbar rhythm stays even. */
 #toolbar .icon-btn {
   width: 36px;
   padding: 0;
@@ -1251,3 +1248,131 @@ body.col-resizing * {
   border-radius: 6px;
   border: 3px solid var(--bg);
 }
+
+
+/* ---------- Status bar ---------- */
+/* Sits below the reading area, carrying document metrics rather than chrome. */
+#statusbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 26px;
+  padding: 0 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+#statusbar[hidden] {
+  display: none;
+}
+#statusbar .sb-left,
+#statusbar .sb-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+#statusbar #sb-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 62vw;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  opacity: 0.85;
+}
+#statusbar #sb-path[hidden] {
+  display: none;
+}
+
+/* Leave room for the bar so the last line of a document is never covered. */
+#content {
+  padding-bottom: calc(80vh + 26px);
+}
+
+/* ---------- Settings: checkbox row ---------- */
+.settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.settings-switch label {
+  color: var(--fg);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.settings-switch input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* ---------- GitHub-style callouts ---------- */
+/* A coloured spine on the left, a tinted header label, and readable body. */
+.markdown-body .md-callout {
+  margin: 1.2em 0;
+  padding: 12px 16px 12px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-left-color: var(--callout-accent, var(--accent));
+  border-radius: 8px;
+  background: var(--callout-bg, var(--code-bg));
+  color: var(--fg);
+}
+.markdown-body .md-callout > :first-child {
+  margin-top: 0;
+}
+.markdown-body .md-callout > :last-child {
+  margin-bottom: 0;
+}
+.markdown-body .md-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 0.95em;
+  color: var(--callout-accent, var(--accent));
+}
+.md-callout-icon {
+  font-size: 1em;
+  line-height: 1;
+}
+.markdown-body .md-callout.md-callout-note {
+  --callout-accent: #0969da;
+  --callout-bg: rgba(9, 105, 218, 0.06);
+}
+.markdown-body .md-callout.md-callout-tip {
+  --callout-accent: #1a7f37;
+  --callout-bg: rgba(26, 127, 55, 0.07);
+}
+.markdown-body .md-callout.md-callout-important {
+  --callout-accent: #8250df;
+  --callout-bg: rgba(130, 80, 223, 0.07);
+}
+.markdown-body .md-callout.md-callout-warning {
+  --callout-accent: #9a6700;
+  --callout-bg: rgba(154, 103, 0, 0.08);
+}
+.markdown-body .md-callout.md-callout-caution {
+  --callout-accent: #cf222e;
+  --callout-bg: rgba(207, 34, 46, 0.07);
+}
+:root[data-theme="dark"] .markdown-body .md-callout.md-callout-note { --callout-accent: #4493f8; }
+:root[data-theme="dark"] .markdown-body .md-callout.md-callout-tip { --callout-accent: #3fb950; }
+:root[data-theme="dark"] .markdown-body .md-callout.md-callout-important { --callout-accent: #ab7df8; }
+:root[data-theme="dark"] .markdown-body .md-callout.md-callout-warning { --callout-accent: #d29922; }
+:root[data-theme="dark"] .markdown-body .md-callout.md-callout-caution { --callout-accent: #f85149; }

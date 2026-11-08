@@ -18,11 +18,11 @@
       <button id="font-inc" class="icon-btn" title="放大字体 (Ctrl++)" aria-label="放大字体">A+</button>
       <button id="wide-toggle" class="icon-btn" title="宽版 / 窄版切换 (Ctrl+Shift+\)" aria-label="切换宽版内容"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h16"/><path d="M7.6 8.4 4 12l3.6 3.6"/><path d="M16.4 8.4 20 12l-3.6 3.6"/></svg></button>
       <button id="theme-toggle" class="icon-btn" title="主题：跟随系统（点击切换）" aria-label="切换配色主题"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4.6" width="18" height="12" rx="2"/><path d="M9 20h6"/><path d="M12 16.6V20"/></svg></button>
-      <button id="settings-btn" class="icon-btn" title="设置" aria-label="设置"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.6M12 18.8v2.6M4.35 7.5l2.25 1.3M17.4 15.2l2.25 1.3M4.35 16.5l2.25-1.3M17.4 8.8l2.25-1.3"/></svg></button>
+      <button id="settings-btn" class="icon-btn" title="设置" aria-label="设置"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.7 2.5h2.6l.42 2.2a7.6 7.6 0 0 1 1.83 1.06l2.13-.72 1.3 2.25-1.65 1.5a7.6 7.6 0 0 1 0 2.42l1.65 1.5-1.3 2.25-2.13-.72a7.6 7.6 0 0 1-1.83 1.06l-.42 2.2h-2.6l-.42-2.2a7.6 7.6 0 0 1-1.83-1.06l-2.13.72-1.3-2.25 1.65-1.5a7.6 7.6 0 0 1 0-2.42l-1.65-1.5 1.3-2.25 2.13.72A7.6 7.6 0 0 1 10.28 4.7z"/><circle cx="12" cy="12" r="2.9"/></svg></button>
       <button id="save-btn" title="保存 (Ctrl+S)" aria-label="保存" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3.6h11L20.4 8v11.4A1.6 1.6 0 0 1 18.8 21H5a1.6 1.6 0 0 1-1.6-1.6V5.2A1.6 1.6 0 0 1 5 3.6z"/><path d="M7.6 3.6v4.8h6.8V3.6"/><rect x="7.4" y="13" width="9.2" height="8" rx="1"/></svg><span>保存</span></button>
       <button id="export-btn" title="导出为 HTML" aria-label="导出为 HTML"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.4v10.2"/><path d="M8.2 9.9 12 13.7l3.8-3.8"/><path d="M4 16.8v1.8A1.6 1.6 0 0 0 5.6 20.2h12.8A1.6 1.6 0 0 0 20 18.6v-1.8"/></svg><span>HTML</span></button>
       <button id="edit-toggle" title="切换编辑模式 (Ctrl+E)" aria-label="切换编辑模式"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.7 4.5a1.9 1.9 0 0 1 2.7 0l3.1 3.1a1.9 1.9 0 0 1 0 2.7L9.1 20.7l-5.3 1.2 1.2-5.3z"/><path d="M12.4 5.8 18.2 11.6"/></svg><span>编辑</span></button>
-      <button id="toc-toggle" title="切换大纲 (Ctrl+\)" aria-label="切换大纲"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6.6h16"/><path d="M4 12h11"/><path d="M4 17.4h7.5"/></svg></button>
+      <button id="toc-toggle" class="icon-btn" title="切换大纲 (Ctrl+\)" aria-label="切换大纲"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6.6h16"/><path d="M4 12h11"/><path d="M4 17.4h7.5"/></svg></button>
       <button id="close-doc-btn" class="icon-btn" title="关闭文档 — 回到首页" aria-label="关闭文档" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.2 6.2 17.8 17.8"/><path d="M17.8 6.2 6.2 17.8"/></svg></button>
     </div>
     <div id="toast" hidden></div>
@@ -98,6 +98,15 @@
           </p>
           <p class="settings-hint">
             字体列表会读取本机已安装的字体；直接输入字体家族名也可以。
+          </p>
+
+          <div class="settings-sep"></div>
+          <div class="settings-switch">
+            <label for="show-path">在状态栏显示完整文件路径</label>
+            <input type="checkbox" id="show-path" />
+          </div>
+          <p class="settings-hint">
+            勾选后，底部状态栏会在字数旁边显示当前文件的完整路径。
           </p>
         </section>
 
@@ -184,6 +193,16 @@
           <button id="modal-cancel">取消</button>
         </div>
       </div>
+    </div>
+    <!-- Status bar: document metrics, reading progress, optional full path. -->
+    <div id="statusbar" hidden>
+      <span class="sb-left">
+        <span id="sb-counts"></span>
+        <span id="sb-path" hidden></span>
+      </span>
+      <span class="sb-right">
+        <span id="sb-progress"></span>
+      </span>
     </div>
   </body>
 </html>

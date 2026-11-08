@@ -32,6 +32,61 @@ document.head.appendChild(hljsStyle);
 
 let lastFrontMatter = "";
 
+// ---------- GitHub-style callouts (> [!note], > [!tip], > [!warning] …) ----------
+// Rendered as a bordered box with a coloured spine and an icon glyph, so
+// notes stand out the way they do in markview and on GitHub.
+const CALLOUT_KINDS: Record<string, { label: string; icon: string }> = {
+  note: { label: "说明", icon: "ℹ" },
+  tip: { label: "提示", icon: "💡" },
+  important: { label: "重要", icon: "❗" },
+  warning: { label: "警告", icon: "⚠" },
+  caution: { label: "小心", icon: "🛑" },
+};
+
+function calloutPlugin(mdInstance: MarkdownIt): void {
+  // Runs before blockquote parsing so the alert marker is still inline text.
+  mdInstance.core.ruler.after("block", "callout", (state) => {
+    const tokens = state.tokens;
+    for (let i = 0; i < tokens.length; i++) {
+      const open = tokens[i];
+      if (open.type !== "blockquote_open") continue;
+
+      // Find the first inline token inside this blockquote.
+      let inlineIdx = -1;
+      for (let j = i + 1; j < tokens.length; j++) {
+        if (tokens[j].type === "blockquote_close") break;
+        if (tokens[j].type === "inline") { inlineIdx = j; break; }
+      }
+      if (inlineIdx < 0) continue;
+
+      const inline = tokens[inlineIdx];
+      const m = /^\s*\[!(note|tip|important|warning|caution)\]\s*\n?/i.exec(inline.content);
+      if (!m) continue;
+
+      const kind = m[1].toLowerCase();
+      const meta = CALLOUT_KINDS[kind];
+      inline.content = inline.content.slice(m[0].length);
+
+      // Drop the marker from the first child text node too.
+      const first = inline.children?.[0];
+      if (first && first.type === "text") {
+        first.content = first.content.replace(/^\s*\[![a-z]+\]\s*/i, "");
+      }
+
+      open.attrJoin("class", `md-callout md-callout-${kind}`);
+      open.attrSet("data-callout", kind);
+
+      // Inject a header token so the label renders above the body.
+      const header = new state.Token("html_inline", "", 0);
+      header.content =
+        `<span class="md-callout-title"><span class="md-callout-icon">${meta.icon}</span>${meta.label}</span>`;
+      inline.children = inline.children ?? [];
+      inline.children.unshift(header);
+    }
+    return true;
+  });
+}
+
 const md: MarkdownIt = new MarkdownIt({
   html: true,
   linkify: true,
@@ -53,6 +108,7 @@ const md: MarkdownIt = new MarkdownIt({
     return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
   },
 })
+  .use(calloutPlugin)
   .use(taskLists, { enabled: true, label: true })
   .use(frontMatterPlugin, (fm: string) => {
     lastFrontMatter = fm;
@@ -449,6 +505,47 @@ async function renderMarkdown(
 
   // New documents start at the top; only hot-reload / live-edit keep position.
   content.scrollTop = preserveScroll ? scrollTop : 0;
+  updateStatusBar();
+}
+
+// ---------- Status bar: counts, progress, optional path ----------
+const statusBar = document.getElementById("statusbar") as HTMLElement;
+const sbCounts = document.getElementById("sb-counts") as HTMLElement;
+const sbPath = document.getElementById("sb-path") as HTMLElement;
+const sbProgress = document.getElementById("sb-progress") as HTMLElement;
+const SHOW_PATH_KEY = "showPath";
+
+function showPathEnabled(): boolean {
+  return localStorage.getItem(SHOW_PATH_KEY) === "true";
+}
+
+/** Count CJK characters individually and Latin words by whitespace runs. */
+function countText(text: string): { chars: number; words: number } {
+  const chars = Array.from(text.replace(/\s/g, "")).length;
+  const cjk = (text.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g) ?? []).length;
+  const latinWords = (text.replace(/[\u3400-\u9FFF\uF900-\uFAFF]/g, " ")
+    .match(/[A-Za-z0-9_'’-]+/g) ?? []).length;
+  return { chars, words: cjk + latinWords };
+}
+
+function updateStatusBar(): void {
+  const hasDoc = currentPath !== null;
+  statusBar.hidden = !hasDoc;
+  if (!hasDoc) return;
+
+  const source = editMode ? editor.value : currentText;
+  const { chars, words } = countText(source);
+  sbCounts.textContent = `${chars} 字符 · ${words} 词`;
+
+  sbPath.hidden = !showPathEnabled();
+  if (!sbPath.hidden) {
+    sbPath.textContent = currentPath ?? "";
+    sbPath.title = currentPath ?? "";
+  }
+
+  const max = content.scrollHeight - content.clientHeight;
+  const pct = max <= 4 ? 100 : Math.min(100, Math.max(0, Math.round((content.scrollTop / max) * 100)));
+  sbProgress.textContent = `${pct}%`;
 }
 
 function setTitle(): void {
@@ -467,9 +564,11 @@ function setTitle(): void {
   // Respect the buttons the user hid in the toolbar customizer.
   const userHidden = (id: string): boolean =>
     document.getElementById(id)?.dataset.userHidden === "1";
-  saveBtn.hidden = !editMode || userHidden("save-btn");
+  saveBtn.hidden = !editMode || !dirty || userHidden("save-btn");
   saveBtn.disabled = !dirty;
-  setIconButton(saveBtn, ICON_SVG.save, dirty ? "保存*" : "已保存");
+  // Hidden entirely when there is nothing to save: an untouched document
+  // showing "saved" was noise, not information.
+  setIconButton(saveBtn, ICON_SVG.save, "保存");
   closeDocBtn.hidden = !currentPath || userHidden("close-doc-btn");
 }
 
@@ -1296,6 +1395,17 @@ settingsModal.addEventListener("click", (ev) => {
 });
 applyReadingFont();
 
+// ---------- Status bar: show-full-path preference ----------
+const showPathToggle = document.getElementById("show-path") as HTMLInputElement;
+showPathToggle.checked = showPathEnabled();
+showPathToggle.addEventListener("change", () => {
+  localStorage.setItem(SHOW_PATH_KEY, String(showPathToggle.checked));
+  updateStatusBar();
+});
+
+// Keep the progress percentage live while scrolling.
+content.addEventListener("scroll", updateStatusBar, { passive: true });
+
 // ---------- Check for updates (GitHub latest release) ----------
 const updateCheckBtn = document.getElementById("update-check") as HTMLButtonElement;
 const updateStatus = document.getElementById("update-status") as HTMLElement;
@@ -1715,11 +1825,26 @@ findInput.addEventListener("input", () => runFind(false));
 (document.getElementById("find-prev") as HTMLButtonElement).addEventListener("click", () => runFind(true));
 (document.getElementById("find-close") as HTMLButtonElement).addEventListener("click", closeFind);
 
-// Collapse / expand the outline.
+// ---------- Outline: collapsed by default ----------
+// The sidebar used to open automatically for any document with 2+ headings,
+// which competed with the reading column. It now starts collapsed and only
+// expands when the user asks for it; that choice is remembered.
+const TOC_OPEN_KEY = "tocOpen";
+
+function applyTocState(): void {
+  const open = localStorage.getItem(TOC_OPEN_KEY) === "true";
+  layout.classList.toggle("toc-collapsed", !open);
+  tocToggle.classList.toggle("on", open);
+  tocToggle.setAttribute("aria-expanded", String(open));
+}
+
 function toggleToc(): void {
-  layout.classList.toggle("toc-collapsed");
+  const open = localStorage.getItem(TOC_OPEN_KEY) === "true";
+  localStorage.setItem(TOC_OPEN_KEY, String(!open));
+  applyTocState();
 }
 tocToggle.addEventListener("click", toggleToc);
+applyTocState();
 window.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && (ev.key === "\\" || ev.key === "|")) {
     // Shift turns "\" into "|" on many layouts; treat both as the same chord.
