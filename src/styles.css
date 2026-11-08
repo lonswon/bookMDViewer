@@ -295,6 +295,12 @@ body.toolbar-shown #toolbar {
   font-weight: 600;
 }
 
+/* hidden attribute must always win — several components set an explicit
+   display value, which would otherwise re-show them after el.hidden = true. */
+[hidden] {
+  display: none !important;
+}
+
 /* ---------- Inline SVG icons ---------- */
 /* One geometry for every glyph: 24px box, currentColor strokes, no fill, so a
    button's colour and hover state carry straight into its icon. */
