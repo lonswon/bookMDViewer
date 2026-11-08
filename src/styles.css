@@ -298,6 +298,67 @@ body.toolbar-shown #toolbar {
   font-weight: 600;
 }
 
+/* ---------- Inline SVG icons ---------- */
+/* One geometry for every glyph: 24px box, currentColor strokes, no fill, so a
+   button's colour and hover state carry straight into its icon. */
+.ui-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -3px;
+  pointer-events: none;
+}
+
+/* Buttons that pair an icon with a word need a gap between them. */
+#toolbar button:has(> .ui-icon + span) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#toolbar button:has(> .ui-icon + span) .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Icon-only buttons centre their glyph. */
+#toolbar .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The A- / A+ text buttons keep their letters but a matching weight. */
+#font-dec,
+#font-inc {
+  font-size: 13px;
+  letter-spacing: -0.2px;
+}
+
+/* Find-bar and lightbox icon buttons. */
+#find-bar button .ui-icon,
+#diagram-toolbar button .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+#find-bar button,
+#diagram-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* About dialog: the app icon rendered as vector. */
+.about-logo svg {
+  width: 64px;
+  height: 64px;
+  display: block;
+}
+
 /* ---------- Editor (live edit + preview) ---------- */
 #editor {
   display: none;
@@ -602,6 +663,10 @@ body.toolbar-shown #toolbar {
 .about-logo {
   font-size: 44px;
   line-height: 1;
+  /* The SVG is a block element, so it needs explicit centring inside the
+     already-centred dialog. */
+  display: flex;
+  justify-content: center;
 }
 .about-name {
   font-size: 20px;

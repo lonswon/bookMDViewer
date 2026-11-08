@@ -86,7 +86,7 @@ const closeDocBtn = document.getElementById("close-doc-btn") as HTMLButtonElemen
 const toastEl = document.getElementById("toast") as HTMLElement;
 const appWindow = getCurrentWindow();
 const EMPTY_STATE_HTML = `<div class="empty-state">
-  <h1>Markdown阅读器</h1>
+  <h1>Markdown 阅读器</h1>
   <p>Drag a <code>.md</code> file here, or <a id="empty-open" href="#">open one</a>.</p>
   <p class="app-version"><a id="about-open" href="#">关于 / About</a></p>
   <div id="recent-list"></div>
@@ -452,12 +452,12 @@ async function renderMarkdown(
 }
 
 function setTitle(): void {
-  const name = currentPath?.split(/[\\/]/).pop() ?? "Markdown阅读器";
-  document.title = `${dirty ? "● " : ""}${name} — Markdown阅读器`;
+  const name = currentPath?.split(/[\\/]/).pop() ?? "Markdown 阅读器";
+  document.title = `${dirty ? "● " : ""}${name} — Markdown 阅读器`;
   // Also drive the real native window title — that is what the title bar shows.
   const nativeTitle = currentPath
     ? `${dirty ? "● " : ""}${name}`
-    : "Markdown阅读器";
+    : "Markdown 阅读器";
   if (nativeTitle !== lastNativeTitle) {
     lastNativeTitle = nativeTitle;
     void appWindow.setTitle(nativeTitle).catch(() => {
@@ -469,7 +469,7 @@ function setTitle(): void {
     document.getElementById(id)?.dataset.userHidden === "1";
   saveBtn.hidden = !editMode || userHidden("save-btn");
   saveBtn.disabled = !dirty;
-  saveBtn.textContent = dirty ? "💾 保存*" : "💾 已保存";
+  setIconButton(saveBtn, ICON_SVG.save, dirty ? "保存*" : "已保存");
   closeDocBtn.hidden = !currentPath || userHidden("close-doc-btn");
 }
 
@@ -481,7 +481,7 @@ function goHome(): void {
   if (editMode) {
     editMode = false;
     layout.classList.remove("mode-edit");
-    editToggle.textContent = "✎ Edit";
+    setIconButton(editToggle, ICON_SVG.edit, "编辑");
   }
   content.innerHTML = EMPTY_STATE_HTML;
   buildToc();
@@ -530,7 +530,7 @@ function schedulePreview(): void {
 function setEditMode(on: boolean): void {
   editMode = on;
   layout.classList.toggle("mode-edit", on);
-  editToggle.textContent = on ? "👁 Preview" : "✎ Edit";
+  setIconButton(editToggle, on ? ICON_SVG.preview : ICON_SVG.edit, on ? "预览" : "编辑");
   if (on) {
     // Only reload from the saved snapshot when there are no unsaved edits;
     // otherwise entering edit mode would wipe the user's unsaved buffer
@@ -739,6 +739,23 @@ closeDocBtn.addEventListener("click", () => {
     goHome();
   }
 });
+
+// ---------- Icons (mirror of the inline SVGs in index.html) ----------
+// Kept as markup strings so buttons whose label changes at runtime can swap
+// between them without falling back to emoji.
+const ICON_SVG = {
+  save: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3.6h11L20.4 8v11.4A1.6 1.6 0 0 1 18.8 21H5a1.6 1.6 0 0 1-1.6-1.6V5.2A1.6 1.6 0 0 1 5 3.6z"/><path d="M7.6 3.6v4.8h6.8V3.6"/><rect x="7.4" y="13" width="9.2" height="8" rx="1"/></svg>',
+  edit: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.7 4.5a1.9 1.9 0 0 1 2.7 0l3.1 3.1a1.9 1.9 0 0 1 0 2.7L9.1 20.7l-5.3 1.2 1.2-5.3z"/><path d="M12.4 5.8 18.2 11.6"/></svg>',
+  preview: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.4 12S6 5.6 12 5.6 21.6 12 21.6 12 18 18.4 12 18.4 2.4 12 2.4 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  themeSystem: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4.6" width="18" height="12" rx="2"/><path d="M9 20h6"/><path d="M12 16.6V20"/></svg>',
+  themeLight: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2.4v2.2M12 19.4v2.2M4.35 4.35l1.56 1.56M18.09 18.09l1.56 1.56M2.4 12h2.2M19.4 12h2.2M4.35 19.65l1.56-1.56M18.09 5.91l1.56-1.56"/></svg>',
+  themeDark: '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a7 7 0 1 0 10.8 10.8z"/></svg>',
+};
+
+/** Replace a button's contents with an icon plus an optional label. */
+function setIconButton(el: HTMLElement, icon: string, label?: string): void {
+  el.innerHTML = label ? `${icon}<span>${label}</span>` : icon;
+}
 
 // ---------- Floating toolbar: auto-hide + user customization ----------
 
@@ -1014,9 +1031,9 @@ applyWide();
 
 // Cycle the color theme: system → light → dark → system.
 const THEME_ICON: Record<ThemePref, string> = {
-  system: "🖥️",
-  light: "☀️",
-  dark: "🌙",
+  system: ICON_SVG.themeSystem,
+  light: ICON_SVG.themeLight,
+  dark: ICON_SVG.themeDark,
 };
 const THEME_TITLE: Record<ThemePref, string> = {
   system: "主题：跟随系统 （点击切换）",
@@ -1026,7 +1043,7 @@ const THEME_TITLE: Record<ThemePref, string> = {
 function applyTheme(): void {
   document.documentElement.dataset.theme = themePref;
   hljsStyle.textContent = currentDark() ? hljsDarkCss : hljsLightCss;
-  themeToggle.textContent = THEME_ICON[themePref];
+  setIconButton(themeToggle, THEME_ICON[themePref]);
   themeToggle.title = THEME_TITLE[themePref];
   localStorage.setItem("theme", themePref);
   // Re-render the open document so mermaid diagrams pick up the new theme

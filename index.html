@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Markdown阅读器</title>
+    <title>Markdown 阅读器</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
@@ -12,26 +12,26 @@
          when approached. Without it the hidden toolbar could never be reached. -->
     <div id="toolbar-hotzone" aria-hidden="true"></div>
     <div id="toolbar" role="toolbar" aria-label="工具栏">
-      <button id="open-btn" class="icon-btn" title="打开文件 (Ctrl+O)" aria-label="打开文件">📂</button>
-      <button id="files-btn" class="icon-btn" title="文件浏览器 (Ctrl+B)" aria-label="文件浏览器">🗂</button>
+      <button id="open-btn" class="icon-btn" title="打开文件 (Ctrl+O)" aria-label="打开文件"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7.4A2 2 0 0 1 5 5.4h3.5a1 1 0 0 1 .71.29l1.4 1.4a1 1 0 0 0 .71.3H19a2 2 0 0 1 2 2v.8H3z"/><path d="M3 11.2h18l-1.85 6.9A1.6 1.6 0 0 1 17.6 19.3H6.4a1.6 1.6 0 0 1-1.55-1.2z"/></svg></button>
+      <button id="files-btn" class="icon-btn" title="文件浏览器 (Ctrl+B)" aria-label="文件浏览器"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.2" y="4.2" width="17.6" height="4.4" rx="1.2"/><rect x="3.2" y="10.3" width="17.6" height="4.4" rx="1.2"/><rect x="3.2" y="16.4" width="11" height="4" rx="1.2"/></svg></button>
       <button id="font-dec" class="icon-btn" title="缩小字体 (Ctrl+-)" aria-label="缩小字体">A−</button>
       <button id="font-inc" class="icon-btn" title="放大字体 (Ctrl++)" aria-label="放大字体">A+</button>
-      <button id="wide-toggle" class="icon-btn" title="宽版 / 窄版切换 (Ctrl+Shift+\)" aria-label="切换宽版内容">↔</button>
-      <button id="theme-toggle" class="icon-btn" title="主题：跟随系统（点击切换）" aria-label="切换配色主题">🖥️</button>
-      <button id="settings-btn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
-      <button id="save-btn" title="保存 (Ctrl+S)" aria-label="保存" hidden>💾 保存</button>
-      <button id="export-btn" title="导出为 HTML" aria-label="导出为 HTML">⬇ HTML</button>
-      <button id="edit-toggle" title="切换编辑模式 (Ctrl+E)" aria-label="切换编辑模式">✎ 编辑</button>
-      <button id="toc-toggle" title="切换大纲 (Ctrl+\)" aria-label="切换大纲">☰</button>
-      <button id="close-doc-btn" class="icon-btn" title="关闭文档 — 回到首页" aria-label="关闭文档" hidden>✕</button>
+      <button id="wide-toggle" class="icon-btn" title="宽版 / 窄版切换 (Ctrl+Shift+\)" aria-label="切换宽版内容"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h16"/><path d="M7.6 8.4 4 12l3.6 3.6"/><path d="M16.4 8.4 20 12l-3.6 3.6"/></svg></button>
+      <button id="theme-toggle" class="icon-btn" title="主题：跟随系统（点击切换）" aria-label="切换配色主题"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4.6" width="18" height="12" rx="2"/><path d="M9 20h6"/><path d="M12 16.6V20"/></svg></button>
+      <button id="settings-btn" class="icon-btn" title="设置" aria-label="设置"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v2.6M12 18.8v2.6M4.35 7.5l2.25 1.3M17.4 15.2l2.25 1.3M4.35 16.5l2.25-1.3M17.4 8.8l2.25-1.3"/></svg></button>
+      <button id="save-btn" title="保存 (Ctrl+S)" aria-label="保存" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3.6h11L20.4 8v11.4A1.6 1.6 0 0 1 18.8 21H5a1.6 1.6 0 0 1-1.6-1.6V5.2A1.6 1.6 0 0 1 5 3.6z"/><path d="M7.6 3.6v4.8h6.8V3.6"/><rect x="7.4" y="13" width="9.2" height="8" rx="1"/></svg><span>保存</span></button>
+      <button id="export-btn" title="导出为 HTML" aria-label="导出为 HTML"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.4v10.2"/><path d="M8.2 9.9 12 13.7l3.8-3.8"/><path d="M4 16.8v1.8A1.6 1.6 0 0 0 5.6 20.2h12.8A1.6 1.6 0 0 0 20 18.6v-1.8"/></svg><span>HTML</span></button>
+      <button id="edit-toggle" title="切换编辑模式 (Ctrl+E)" aria-label="切换编辑模式"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.7 4.5a1.9 1.9 0 0 1 2.7 0l3.1 3.1a1.9 1.9 0 0 1 0 2.7L9.1 20.7l-5.3 1.2 1.2-5.3z"/><path d="M12.4 5.8 18.2 11.6"/></svg><span>编辑</span></button>
+      <button id="toc-toggle" title="切换大纲 (Ctrl+\)" aria-label="切换大纲"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6.6h16"/><path d="M4 12h11"/><path d="M4 17.4h7.5"/></svg></button>
+      <button id="close-doc-btn" class="icon-btn" title="关闭文档 — 回到首页" aria-label="关闭文档" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.2 6.2 17.8 17.8"/><path d="M17.8 6.2 6.2 17.8"/></svg></button>
     </div>
     <div id="toast" hidden></div>
     <div id="find-bar" hidden>
       <input id="find-input" type="text" placeholder="查找…" spellcheck="false" />
       <span id="find-count"></span>
-      <button id="find-prev" title="上一个 (Shift+Enter)" aria-label="上一个匹配项">↑</button>
-      <button id="find-next" title="下一个 (Enter)" aria-label="下一个匹配项">↓</button>
-      <button id="find-close" title="关闭 (Esc)" aria-label="关闭查找">✕</button>
+      <button id="find-prev" title="上一个 (Shift+Enter)" aria-label="上一个匹配项"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5.4"/><path d="M6.2 11.2 12 5.4l5.8 5.8"/></svg></button>
+      <button id="find-next" title="下一个 (Enter)" aria-label="下一个匹配项"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v13.6"/><path d="M17.8 12.8 12 18.6l-5.8-5.8"/></svg></button>
+      <button id="find-close" title="关闭 (Esc)" aria-label="关闭查找"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.2 6.2 17.8 17.8"/><path d="M17.8 6.2 6.2 17.8"/></svg></button>
     </div>
     <div id="layout">
       <nav id="files" aria-label="文件浏览器"></nav>
@@ -43,7 +43,7 @@
       ></textarea>
       <article id="content" class="markdown-body">
         <div class="empty-state">
-          <h1>Markdown阅读器</h1>
+          <h1>Markdown 阅读器</h1>
           <p>把 <code>.md</code> 文件拖到这里，或<a id="empty-open" href="#">打开一个</a>。</p>
           <p class="app-version"><a id="about-open" href="#">关于 / About</a></p>
           <div id="recent-list"></div>
@@ -53,11 +53,11 @@
 
     <div id="diagram-modal" hidden>
       <div id="diagram-toolbar">
-        <button id="dg-zoomout" title="缩小">−</button>
+        <button id="dg-zoomout" title="缩小"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
         <span id="dg-zoom">100%</span>
-        <button id="dg-zoomin" title="放大">+</button>
+        <button id="dg-zoomin" title="放大"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
         <button id="dg-reset" title="适应屏幕">重置</button>
-        <button id="dg-close" title="关闭 (Esc)">✕</button>
+        <button id="dg-close" title="关闭 (Esc)"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.2 6.2 17.8 17.8"/><path d="M17.8 6.2 6.2 17.8"/></svg></button>
       </div>
       <div id="diagram-stage"></div>
     </div>
@@ -136,8 +136,33 @@
 
     <div id="about-modal" hidden>
       <div class="modal-box about-box">
-        <div class="about-logo">📘</div>
-        <div class="about-name">Markdown阅读器</div>
+        <div class="about-logo" aria-hidden="true">
+          <svg viewBox="0 0 512 512" focusable="false">
+            <defs>
+              <linearGradient id="aboutTile" x1="0" y1="0" x2="0.35" y2="1">
+                <stop offset="0" stop-color="#2C8CE8"/>
+                <stop offset="1" stop-color="#0B5CAD"/>
+              </linearGradient>
+            </defs>
+            <rect width="512" height="512" rx="114" ry="114" fill="url(#aboutTile)"/>
+            <g transform="translate(256 256) scale(1.25) translate(-256 -256)">
+              <g fill="#fff">
+                <path d="M256 168C216 146 168 140 132 143c-8 .6-12 5-12 13v188c0 8 5 12 13 11 39-4 87 3 123 25z"/>
+                <path d="M256 168c40-22 88-28 124-25 8 .6 12 5 12 13v188c0 8-5 12-13 11-39-4-87 3-123 25z"/>
+              </g>
+              <g fill="#1C6FC4" opacity=".92">
+                <rect x="148" y="196" width="86" height="15" rx="7.5"/>
+                <rect x="148" y="232" width="70" height="15" rx="7.5"/>
+                <rect x="148" y="268" width="80" height="15" rx="7.5"/>
+                <rect x="278" y="196" width="86" height="15" rx="7.5"/>
+                <rect x="278" y="232" width="70" height="15" rx="7.5"/>
+                <rect x="278" y="268" width="80" height="15" rx="7.5"/>
+              </g>
+              <rect x="252" y="168" width="8" height="212" fill="#0B5CAD" opacity=".18"/>
+            </g>
+          </svg>
+        </div>
+        <div class="about-name">Markdown 阅读器</div>
         <div class="about-ver" id="about-version"></div>
         <p class="about-desc">
           轻量、完全本地、开源的 Markdown 查看器与编辑器。<br />
