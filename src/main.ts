@@ -519,6 +519,33 @@ function showPathEnabled(): boolean {
   return localStorage.getItem(SHOW_PATH_KEY) === "true";
 }
 
+/** Copy the full path, falling back to a selection when clipboard is blocked. */
+async function copyPathToClipboard(): Promise<void> {
+  const p = currentPath;
+  if (!p) return;
+  try {
+    await navigator.clipboard.writeText(p);
+    toast(`已复制路径：${p}`);
+  } catch {
+    // The Clipboard API needs a secure context; fall back to a hidden textarea.
+    const ta = document.createElement("textarea");
+    ta.value = p;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    toast(ok ? `已复制路径：${p}` : "复制失败，请手动选中路径");
+  }
+}
+
 /** Count CJK characters individually and Latin words by whitespace runs. */
 function countText(text: string): { chars: number; words: number } {
   const chars = Array.from(text.replace(/\s/g, "")).length;
@@ -1405,6 +1432,15 @@ showPathToggle.addEventListener("change", () => {
 
 // Keep the progress percentage live while scrolling.
 content.addEventListener("scroll", updateStatusBar, { passive: true });
+
+// Clicking the path in the status bar copies it.
+sbPath.addEventListener("click", () => void copyPathToClipboard());
+sbPath.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" || ev.key === " ") {
+    ev.preventDefault();
+    void copyPathToClipboard();
+  }
+});
 
 // ---------- Check for updates (GitHub latest release) ----------
 const updateCheckBtn = document.getElementById("update-check") as HTMLButtonElement;
