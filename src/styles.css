@@ -440,9 +440,13 @@ body.toolbar-shown #toolbar {
 .empty-state a {
   color: var(--accent);
 }
+/* The home screen is one centered column: the list is capped at a comfortable
+   reading width and shares the heading's left edge rather than forming its own
+   narrower, independently centered block. */
 #recent-list {
   margin: 28px auto 0;
-  max-width: 460px;
+  max-width: 620px;
+  width: 100%;
   text-align: left;
 }
 #recent-list h3 {
