@@ -15,6 +15,59 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import hljsLightCss from "highlight.js/styles/github.css?inline";
 import hljsDarkCss from "highlight.js/styles/github-dark.css?inline";
 
+// Desktop: the dialog plugin returns a plain filesystem path.
+// Android: scoped storage means we must go through the Storage Access Framework
+// and get back a `content://` URI that the backend can actually read.
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+
+/// Human-readable name for a path or a `content://` document URI.
+/// SAF URIs percent-encode the filename as the last segment, e.g.
+/// `content://…/document/primary%3ANotes%2Ftodo.md` → `todo.md`.
+function displayName(pathOrUri: string): string {
+  if (!pathOrUri.startsWith("content://")) {
+    return pathOrUri.split(/[\\/]/).pop() || pathOrUri;
+  }
+  const last = pathOrUri.split("/").pop() ?? pathOrUri;
+  let decoded = last;
+  try {
+    decoded = decodeURIComponent(last);
+  } catch {
+    // Malformed escape: fall back to the raw segment.
+  }
+  // The document id looks like `primary:Notes/todo.md`.
+  const tail = decoded.split(":").pop() ?? decoded;
+  return tail.split("/").pop() || tail;
+}
+
+/// Turn a relative image path into a sibling `content://` URI next to the open
+/// document. Works only for external-storage style document ids
+/// (`primary:Notes/todo.md`); anything else is returned unchanged so the image
+/// simply fails to load rather than showing a broken URL.
+function resolveContentSibling(src: string): string {
+  if (!currentPath?.startsWith("content://")) return src;
+  const marker = "/document/";
+  const at = currentPath.indexOf(marker);
+  if (at < 0) return src;
+  const prefix = currentPath.slice(0, at + marker.length);
+  const docId = currentPath.slice(at + marker.length);
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(docId);
+  } catch {
+    return src;
+  }
+  // `primary:Notes/todo.md` → volume `primary`, path `Notes/todo.md`
+  const firstColon = decoded.indexOf(":");
+  if (firstColon < 0) return src;
+  const volume = decoded.slice(0, firstColon);
+  const docPath = decoded.slice(firstColon + 1);
+  const dir = docPath.replace(/\/[^/]*$/, "");
+  const cleaned = src.replace(/^\.\//, "");
+  const sibling = `${volume}:${dir}/${cleaned}`;
+  return prefix + encodeURIComponent(sibling).replace(/%2F/g, "/").replace(/%3A/g, ":");
+}
+
+
 // ---------- Color theme (system / light / dark) ----------
 type ThemePref = "system" | "light" | "dark";
 const systemDarkMQ = window.matchMedia("(prefers-color-scheme: dark)");
@@ -359,6 +412,19 @@ function makeTablesResizable(): void {
 // Resolve relative-path images against the open file's folder via the asset protocol.
 function resolveImages(): void {
   if (!currentPath) return;
+  // On Android the document sits behind a content:// URI. Relative images only
+  // resolve when the user opened the file through a *folder* grant, which is
+  // what `android-fs-content:` can serve — plain document grants cover one file.
+  if (IS_ANDROID) {
+    content.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+      const src = img.getAttribute("src") ?? "";
+      if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return;
+      void import("tauri-plugin-android-fs-api").then((fs) => {
+        img.src = fs.convertFileSrc(resolveContentSibling(src));
+      }).catch(() => {});
+    });
+    return;
+  }
   const dir = currentPath.replace(/[\\/][^\\/]*$/, "");
   content.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
     const src = img.getAttribute("src") ?? "";
@@ -630,10 +696,11 @@ async function openFile(
     if (editMode) editor.value = text;
     setTitle();
     await renderMarkdown(text, preserveScroll);
-    if (watch) {
+    // SAF has no inotify equivalent, so live-reload is desktop-only.
+    if (watch && !IS_ANDROID) {
       await invoke("watch_file", { path });
     }
-    if (filesOpen) void renderFiles(dirOf(path));
+    if (filesOpen && !IS_ANDROID) void renderFiles(dirOf(path));
   } catch (e) {
     content.innerHTML = `<div class="empty-state"><p>${String(e)}</p></div>`;
     buildToc();
@@ -1513,12 +1580,37 @@ document.getElementById("about-github")?.addEventListener("click", () => {
 });
 
 // ---------- Open file dialog + recent files ----------
-async function openViaDialog(): Promise<void> {
-  const selected = await openDialog({
+//
+async function pickFile(): Promise<string | null> {
+  if (!IS_ANDROID) {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+    });
+    return typeof selected === "string" ? selected : null;
+  }
+  const fs = await import("tauri-plugin-android-fs-api");
+  // Returns an array; we asked for a single pick.
+  const picked = await fs.showOpenFilePicker({
+    mimeTypes: ["text/markdown", "text/x-markdown", "text/plain"],
     multiple: false,
-    filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+    localOnly: true,
+    needWritePermission: true,
   });
-  if (typeof selected === "string") await openFile(selected);
+  const uri = picked[0];
+  if (!uri) return null;
+  // Keep the grant across restarts so "recent files" keeps working.
+  await fs.persistPickerUriPermission(uri).catch(() => {});
+  return uri.uri;
+}
+
+async function openViaDialog(): Promise<void> {
+  try {
+    const path = await pickFile();
+    if (path) await openFile(path);
+  } catch (e) {
+    toast(`打开失败：${String(e)}`);
+  }
 }
 openBtn.addEventListener("click", () => void openViaDialog());
 // Delegated so the empty-state links keep working after goHome() rebuilds them.
@@ -1560,10 +1652,12 @@ function renderRecents(): void {
     a.href = "#";
     const name = document.createElement("span");
     name.className = "rf-name";
-    name.textContent = p.split(/[\\/]/).pop() ?? p;
+    name.textContent = displayName(p);
     const full = document.createElement("span");
     full.className = "rf-path";
-    full.textContent = p;
+    // A content:// URI is unreadable on screen, so the sub-line carries the
+    // decoded file name instead of the raw grant string.
+    full.textContent = IS_ANDROID ? displayName(p) : p;
     a.append(name, full);
     a.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -1634,7 +1728,8 @@ function showFileMenu(ev: MouseEvent, path: string): void {
     closeFileMenu();
     void invoke("open_new_window", { path });
   });
-  menu.appendChild(item);
+  // Android has no multi-window instance model.
+  if (!IS_ANDROID) menu.appendChild(item);
   document.body.appendChild(menu);
   // Keep within the viewport.
   const mw = 180;
@@ -2038,15 +2133,17 @@ async function init(): Promise<void> {
     void openFile(ev.payload);
   });
 
-  // Drag-and-drop a .md file onto the window.
-  await getCurrentWebview().onDragDropEvent((ev) => {
-    if (ev.payload.type === "drop") {
-      const file = ev.payload.paths.find((p) => /\.(md|markdown)$/i.test(p));
-      if (file) {
-        void openFile(file);
+  // Drag-and-drop a .md file onto the window (desktop only).
+  if (!IS_ANDROID) {
+    await getCurrentWebview().onDragDropEvent((ev) => {
+      if (ev.payload.type === "drop") {
+        const file = ev.payload.paths.find((p) => /\.(md|markdown)$/i.test(p));
+        if (file) {
+          void openFile(file);
+        }
       }
-    }
-  });
+    });
+  }
 
   // Intercept window close when there are unsaved edits.
   await appWindow.onCloseRequested((event) => {
@@ -2081,10 +2178,12 @@ async function init(): Promise<void> {
     }
   }
 
-  // Optional `--zoom=<factor>` flag scales the whole UI.
-  const zoom = await invoke<number>("start_zoom");
-  if (zoom && zoom > 0) {
-    await getCurrentWebview().setZoom(zoom);
+  // Optional `--zoom=<factor>` flag scales the whole UI (desktop only).
+  if (!IS_ANDROID) {
+    const zoom = await invoke<number>("start_zoom");
+    if (zoom && zoom > 0) {
+      await getCurrentWebview().setZoom(zoom);
+    }
   }
 }
 

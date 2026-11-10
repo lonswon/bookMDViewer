@@ -67,6 +67,85 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Tauri's CLI unconditionally appends libwebkit2gtk-4.1-0 / libgtk-3-0 to
+      # the deb Depends field on Linux, ignoring bundle.linux.deb.depends. To let
+      # the package install on systems without those libs, rewrite the control
+      # file in place and re-sign the archive.
+      - name: Demote deb hard dependencies to Recommends
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          debs=(src-tauri/target/release/bundle/deb/*.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::No .deb produced"; exit 1
+          fi
+          for deb in "${debs[@]}"; do
+            echo "== rewriting $deb =="
+            work=$(mktemp -d)
+            dpkg-deb -R "$deb" "$work/pkg"
+
+            ctrl="$work/pkg/DEBIAN/control"
+            # Move the two webkit/gtk runtime libs out of Depends into Recommends,
+            # keeping whatever else is in Depends.
+            depends=$(grep -oP '^Depends:\s*\K.*' "$ctrl" || true)
+            kept=$(printf '%s' "$depends" \
+              | tr ',' '\n' | sed 's/^ *//;s/ *$//' \
+              | grep -v -E '^(libwebkit2gtk-4\.1-0|libgtk-3-0)$' \
+              | paste -sd ',' - | sed 's/,/, /g' || true)
+            recommends="libwebkit2gtk-4.1-0, libgtk-3-0"
+
+            if [ -n "$kept" ]; then
+              sed -i "s|^Depends:.*|Depends: $kept|" "$ctrl"
+            else
+              sed -i '/^Depends:/d' "$ctrl"
+            fi
+
+            if grep -q '^Recommends:' "$ctrl"; then
+              existing=$(grep -oP '^Recommends:\s*\K.*' "$ctrl")
+              sed -i "s|^Recommends:.*|Recommends: $existing, $recommends|" "$ctrl"
+            else
+              sed -i "/^Depends:/a Recommends: $recommends" "$ctrl"
+              # If Depends was removed entirely, append instead.
+              grep -q '^Recommends:' "$ctrl" || echo "Recommends: $recommends" >> "$ctrl"
+            fi
+
+            echo "---- new control ----"
+            cat "$ctrl"
+
+            dpkg-deb -b "$work/pkg" "$deb" >/dev/null
+            rm -rf "$work"
+          done
+
+      - name: Verify deb dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for deb in src-tauri/target/release/bundle/deb/*.deb; do
+            echo "== $deb =="
+            dpkg-deb -f "$deb" Depends
+            if dpkg-deb -f "$deb" Depends | grep -q 'libwebkit2gtk-4.1-0'; then
+              echo "::error::libwebkit2gtk-4.1-0 is still a hard dependency"; exit 1
+            fi
+          done
+
+      # The release step above already uploaded the original .deb; replace it
+      # with the rewritten one so users download the dependency-free version.
+      - name: Re-upload rewritten deb
+        if: matrix.platform == 'ubuntu-22.04' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for deb in src-tauri/target/release/bundle/deb/*.deb; do
+            gh release upload "$GITHUB_REF_NAME" "$deb" --clobber
+          done
+
       - name: Upload portable Windows exe
         if: matrix.platform == 'windows-latest'
         shell: bash
@@ -77,3 +156,87 @@ jobs:
           OUT="Markdown.Viewer_${VER}_x64_portable.exe"
           cp "src-tauri/target/release/md-viewer.exe" "$OUT"
           gh release upload "$GITHUB_REF_NAME" "$OUT" --clobber
+
+  # Android: the runner image ships a matching SDK + NDK, so no manual setup.
+  publish-android:
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      # Generates src-tauri/gen/android/ on first run.
+      - name: Initialize Android project
+        run: npx tauri android init --ci
+
+      # arm64 only: that's the 64-bit ABI almost every current phone uses.
+      - name: Build Android APK
+        run: npx tauri android build --apk --target aarch64
+
+      - name: Collect signed artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Universal + split APKs land under gen/android/app/build/outputs.
+          find src-tauri/gen/android -name "*.apk" -type f | while read -r f; do
+            echo "found: $f"
+            cp "$f" "out/$(basename "$f")"
+          done
+          ls -la out/
+
+      - name: Upload APKs to release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(out/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::No APK produced"; exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+          done
+
+      # Always keep the APK as a workflow artifact, even on branch builds.
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: out/*.apk
+          if-no-files-found: error
