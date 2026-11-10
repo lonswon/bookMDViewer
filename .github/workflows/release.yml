@@ -53,7 +53,10 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: Install frontend dependencies
-        run: npm install
+        # `npm ci` pins to package-lock.json; a floating `npm install` pulls a
+        # newer @tauri-apps/api than the Cargo.lock tauri crate and the build
+        # aborts on the version-mismatch check.
+        run: npm ci
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
@@ -181,13 +184,21 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Tauri v2 looks for NDK 29.0.13846066 / android-37 specifically; it can
+      # install them itself, but only once the base SDK + licenses exist. The
+      # deprecated "tools" package makes setup-android's default list fail, so
+      # ask for an explicit minimal set.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools cmdline-tools;latest
+          accept-android-sdk-licenses: true
 
-      - name: Install NDK
+      - name: Show Android toolchain
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          java -version
+          ls "$ANDROID_HOME/ndk" 2>/dev/null || true
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -195,7 +206,10 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: Install frontend dependencies
-        run: npm install
+        # `npm ci` pins to package-lock.json; a floating `npm install` pulls a
+        # newer @tauri-apps/api than the Cargo.lock tauri crate and the build
+        # aborts on the version-mismatch check.
+        run: npm ci
 
       # Generates src-tauri/gen/android/ on first run.
       - name: Initialize Android project
