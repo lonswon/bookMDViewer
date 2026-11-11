@@ -1012,10 +1012,14 @@ interface ToolbarButton {
   label: string;
   glyph: string;
   locked?: boolean;
+  /** Dropped entirely on Android: the feature cannot work there. */
+  androidHidden?: boolean;
 }
 const TOOLBAR_BUTTONS: ToolbarButton[] = [
   { id: "open-btn", label: "打开文件", glyph: "📂" },
-  { id: "files-btn", label: "文件浏览器", glyph: "🗂" },
+  // Hidden on Android: the folder browser needs a directory grant, and a
+  // single SAF document pick cannot provide one, so it would always fail.
+  { id: "files-btn", label: "文件浏览器", glyph: "🗂", androidHidden: true },
   { id: "font-dec", label: "缩小字体", glyph: "A−" },
   { id: "font-inc", label: "放大字体", glyph: "A+" },
   { id: "wide-toggle", label: "宽版 / 窄版切换", glyph: "↔" },
@@ -1084,6 +1088,11 @@ function applyToolbarLayout(): void {
   for (const btn of TOOLBAR_BUTTONS) {
     const el = document.getElementById(btn.id);
     if (!el) continue;
+    // Buttons whose feature cannot work on this platform never appear.
+    if (btn.androidHidden && IS_ANDROID) {
+      el.hidden = true;
+      continue;
+    }
     const shouldHide = !btn.locked && hidden.has(btn.id);
     if (STATE_DRIVEN.has(btn.id)) {
       // Remember the user's preference here; setTitle() decides the rest.
@@ -1106,6 +1115,8 @@ function renderToolbarList(): void {
   order.forEach((id, index) => {
     const btn = TOOLBAR_BUTTONS.find((b) => b.id === id);
     if (!btn) return;
+    // Do not offer a toggle for something that can never appear here.
+    if (btn.androidHidden && IS_ANDROID) return;
 
     const row = document.createElement("div");
     row.className = "tb-row" + (btn.locked ? " tb-locked" : "");
@@ -1267,6 +1278,19 @@ if (USE_DOCKED_TOOLBAR && dock && dockSettingsEl && dockSideSel && dockCornerSel
     localStorage.setItem(DOCK_CORNER_KEY, corner);
     dock?.applyCorner(corner);
   });
+
+  // Handle visibility. Previously this was only read at startup, so ticking
+  // the box did nothing until a restart — the reported bug.
+  const dockHandleToggle = document.getElementById(
+    "dock-handle-visible",
+  ) as HTMLInputElement | null;
+  if (dockHandleToggle) {
+    dockHandleToggle.checked = localStorage.getItem(DOCK_HANDLE_KEY) !== "false";
+    dockHandleToggle.addEventListener("change", () => {
+      localStorage.setItem(DOCK_HANDLE_KEY, String(dockHandleToggle.checked));
+      dock?.setHandleVisible(dockHandleToggle.checked);
+    });
+  }
 }
 
 // Keyboard users: focusing any button must bring the bar into view.
@@ -1974,7 +1998,12 @@ function toggleFiles(): void {
   if (filesOpen) void renderFiles(currentPath ? dirOf(currentPath) : null);
 }
 filesBtn.addEventListener("click", toggleFiles);
-// Restore persisted state on load.
+// Restore persisted state on load — except on Android, where the panel cannot
+// list anything and would just show a permanent error.
+if (filesOpen && IS_ANDROID) {
+  filesOpen = false;
+  localStorage.setItem("filesOpen", "false");
+}
 if (filesOpen) layout.classList.add("files-open");
 
 // ---------- Mermaid diagram lightbox (click to zoom/pan) ----------

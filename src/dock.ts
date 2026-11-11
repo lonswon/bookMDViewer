@@ -68,7 +68,13 @@ export class DockController {
     // Tap-outside backdrop. Sits under the sheet but over the page.
     this.scrim = document.createElement("div");
     this.scrim.className = "dock-scrim";
-    this.scrim.addEventListener("click", () => this.setOpen(false));
+    this.scrim.addEventListener("click", (ev) => {
+      // Close here and stop: if the tap also reached the document handler it
+      // would immediately reopen the sheet (close → open in one click).
+      ev.stopPropagation();
+      ev.preventDefault();
+      this.setOpen(false);
+    });
     document.body.appendChild(this.scrim);
 
     // The always-available way in.
@@ -168,7 +174,8 @@ export class DockController {
 
         this.setOpen(true);
       },
-      // Capture phase so a tap that a later handler stops still toggles.
+      // Bubble phase on purpose: the scrim and the sheet handle their own
+      // clicks and stop propagation, so this only sees taps on the page body.
       { capture: false },
     );
 

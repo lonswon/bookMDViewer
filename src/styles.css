@@ -1293,8 +1293,7 @@ body.col-resizing * {
 /* Its own full-width line: ellipsised, never competing with the counts. */
 #statusbar .sb-path-row {
   display: block;
-  padding: 5px 0 2px;
-  border-bottom: 1px solid var(--border);
+  padding: 3px 0 1px;
 }
 #statusbar .sb-path-row[hidden] {
   display: none;
@@ -1308,14 +1307,16 @@ body.col-resizing * {
 }
 #statusbar #sb-path {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Half the counts' font size, and it wraps instead of being cut off: a long
+     content:// path is useless when ellipsised. */
+  font-size: 0.5em;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
   max-width: 100%;
-  cursor: pointer;
+  opacity: 0.8;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 11px;
-  opacity: 0.85;
   /* Clickable: copies the full path. */
   padding: 2px 5px;
   margin: -2px -2px;
