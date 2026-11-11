@@ -1264,59 +1264,52 @@ body.col-resizing * {
   right: 0;
   bottom: 0;
   z-index: 9;
+  /* Desktop keeps the original single row: counts and path inline, progress at
+     the right. The two-row phone layout is scoped to body.docked-toolbar below. */
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  /* Height is content-driven now: an optional path row sits above the counts. */
-  min-height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 26px;
   padding: 0 14px;
   border-top: 1px solid var(--border);
   background: var(--bg);
   color: var(--muted);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
-  /* Sit above the home indicator on a phone. */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   user-select: none;
 }
 #statusbar[hidden] {
   display: none;
 }
-#statusbar .sb-main-row .sb-left,
-#statusbar .sb-main-row .sb-right {
+#statusbar .sb-left,
+#statusbar .sb-right {
   display: flex;
   align-items: center;
   gap: 14px;
   min-width: 0;
 }
-/* Its own full-width line: ellipsised, never competing with the counts. */
-#statusbar .sb-path-row {
-  display: block;
-  padding: 3px 0 1px;
-}
+/* The path row hides on request; `display: contents` above keeps the desktop
+   layout flat while still honouring the attribute. */
 #statusbar .sb-path-row[hidden] {
   display: none;
 }
+/* Desktop: the two wrapper boxes collapse so the bar renders exactly as it did
+   before — `display: contents` drops the boxes and lets the counts, path and
+   progress sit in the parent flex row as before. */
+#statusbar .sb-path-row,
 #statusbar .sb-main-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 26px;
+  display: contents;
 }
+/* Android opts back into real boxes further down (body.docked-toolbar). */
 #statusbar #sb-path {
-  display: block;
-  /* Half the counts' font size, and it wraps instead of being cut off: a long
-     content:// path is useless when ellipsised. */
-  font-size: 0.5em;
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-all;
-  max-width: 100%;
-  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 62vw;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  opacity: 0.85;
   /* Clickable: copies the full path. */
   padding: 2px 5px;
   margin: -2px -2px;
@@ -1685,4 +1678,50 @@ body.docked-toolbar .settings-tab {
   flex: 0 0 auto;
   white-space: nowrap;
   padding: 8px 10px;
+}
+
+/* ---- Android: the status bar becomes two stacked rows ----
+   Desktop collapses these wrappers with `display: contents`; here they get real
+   boxes back so the path can wrap onto its own line at half the font size. */
+body.docked-toolbar #statusbar {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  height: auto;
+  min-height: 26px;
+  padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px));
+}
+body.docked-toolbar #statusbar .sb-path-row,
+body.docked-toolbar #statusbar .sb-main-row {
+  display: block;
+}
+body.docked-toolbar #statusbar .sb-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 26px;
+}
+body.docked-toolbar #statusbar .sb-path-row {
+  padding: 3px 0 1px;
+}
+body.docked-toolbar #statusbar .sb-path-row[hidden] {
+  display: none;
+}
+body.docked-toolbar #statusbar #sb-path {
+  /* Vertically this is half the counts' 11.5px, horizontally it is easy to
+     chase: what matters is that a long content:// path is readable, so it
+     wraps instead of being ellipsised. */
+  display: block;
+  font-size: 0.5em;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  max-width: 100%;
+  opacity: 0.8;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
 }
