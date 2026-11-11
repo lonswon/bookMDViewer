@@ -150,12 +150,15 @@ jobs:
           done
 
       - name: Upload portable Windows exe
-        if: matrix.platform == 'windows-latest'
+        if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
+          # A branch ref like feat/android-arm64 contains a slash, which would be
+          # read as a directory here; sanitize it so manual runs don't break.
+          VER="${VER//\//-}"
           OUT="Markdown.Viewer_${VER}_x64_portable.exe"
           cp "src-tauri/target/release/md-viewer.exe" "$OUT"
           gh release upload "$GITHUB_REF_NAME" "$OUT" --clobber
