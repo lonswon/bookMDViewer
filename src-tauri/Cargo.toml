@@ -11,12 +11,12 @@ name = "md_viewer_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.12", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2.12", features = ["protocol-asset"] }
-tauri-plugin-opener = "2"
-tauri-plugin-dialog = "2"
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "=2.5.4"
+tauri-plugin-dialog = "=2.7.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -29,7 +29,7 @@ notify = "6"
 # `protocol_content` registers the `android-fs-content:` custom protocol so
 # images referenced by a content:// URI can render inside the webview.
 [target.'cfg(target_os = "android")'.dependencies]
-tauri-plugin-android-fs = { version = "=30.2.0", features = ["protocol_content"] }
+tauri-plugin-android-fs = { version = "=29.0.0", features = ["protocol_content"] }
 
 # Smallest possible release binary.
 [profile.release]
