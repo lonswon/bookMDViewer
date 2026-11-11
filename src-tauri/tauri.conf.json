@@ -25,20 +25,34 @@
       "csp": "default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' asset: http://asset.localhost https://asset.localhost android-fs-content: data: blob: https: http:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'self'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "app", "dmg", "appimage", "deb", "rpm"],
+    "targets": [
+      "nsis",
+      "app",
+      "dmg",
+      "appimage",
+      "deb",
+      "rpm"
+    ],
     "linux": {
       "deb": {
-        "depends": ["libc6", "libgcc-s1"],
-        "recommends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": [
+          "libc6",
+          "libgcc-s1"
+        ]
       },
       "rpm": {
-        "depends": ["glibc", "libgcc"]
+        "depends": [
+          "glibc",
+          "libgcc"
+        ]
       }
     },
     "icon": [
@@ -50,7 +64,10 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "name": "Markdown",
         "description": "Markdown document",
         "role": "Viewer"

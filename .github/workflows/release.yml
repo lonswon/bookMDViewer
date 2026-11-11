@@ -105,12 +105,16 @@ jobs:
               sed -i '/^Depends:/d' "$ctrl"
             fi
 
+            # Merge into an existing Recommends without duplicating entries
+            # (tauri.conf.json may already list these two).
             if grep -q '^Recommends:' "$ctrl"; then
               existing=$(grep -oP '^Recommends:\s*\K.*' "$ctrl")
-              sed -i "s|^Recommends:.*|Recommends: $existing, $recommends|" "$ctrl"
+              merged=$(printf '%s,%s' "$existing" "$recommends" \
+                | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' \
+                | awk '!seen[$0]++' | paste -sd ',' - | sed 's/,/, /g')
+              sed -i "s|^Recommends:.*|Recommends: $merged|" "$ctrl"
             else
               sed -i "/^Depends:/a Recommends: $recommends" "$ctrl"
-              # If Depends was removed entirely, append instead.
               grep -q '^Recommends:' "$ctrl" || echo "Recommends: $recommends" >> "$ctrl"
             fi
 
