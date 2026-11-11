@@ -1397,3 +1397,233 @@ body.col-resizing * {
 :root[data-theme="dark"] .markdown-body .md-callout.md-callout-important { --callout-accent: #ab7df8; }
 :root[data-theme="dark"] .markdown-body .md-callout.md-callout-warning { --callout-accent: #d29922; }
 :root[data-theme="dark"] .markdown-body .md-callout.md-callout-caution { --callout-accent: #f85149; }
+
+/* ==========================================================================
+   Dockable toolbar (touch / Android)
+
+   Everything below is scoped to `body.docked-toolbar`, which main.ts only adds
+   when IS_ANDROID is true. Desktop keeps the hover-driven floating bar above
+   completely intact.
+
+   Layout model:
+     - the bar becomes a sheet pinned to one screen edge,
+     - a small "···" handle in one corner is the always-available opener,
+     - a scrim closes it on tap-outside.
+   ========================================================================== */
+
+body.docked-toolbar #toolbar {
+  /* Override the floating bar's opacity/transform animation entirely. */
+  position: fixed;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  z-index: 40;
+  display: flex;
+  gap: 4px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  /* Leave room for the notch / gesture bar. */
+  padding-left: calc(8px + env(safe-area-inset-left, 0px));
+  padding-right: calc(8px + env(safe-area-inset-right, 0px));
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Buttons get bigger tap targets on a phone. */
+body.docked-toolbar #toolbar button {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  font-size: 15px;
+}
+
+/* ---- Per-edge placement, closed and open ---- */
+
+/* left */
+body.docked-toolbar #toolbar[data-dock="left"] {
+  left: 0;
+  top: 50%;
+  max-height: 82vh;
+  max-width: 82vw;
+  transform: translate(-110%, -50%);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+body.docked-toolbar.dock-open #toolbar[data-dock="left"] {
+  transform: translate(0, -50%);
+}
+
+/* right */
+body.docked-toolbar #toolbar[data-dock="right"] {
+  right: 0;
+  top: 50%;
+  max-height: 82vh;
+  max-width: 82vw;
+  transform: translate(110%, -50%);
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+body.docked-toolbar.dock-open #toolbar[data-dock="right"] {
+  transform: translate(0, -50%);
+}
+
+/* top */
+body.docked-toolbar #toolbar[data-dock="top"] {
+  top: 0;
+  left: 50%;
+  max-width: 96vw;
+  transform: translate(-50%, -110%);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+body.docked-toolbar.dock-open #toolbar[data-dock="top"] {
+  transform: translate(-50%, 0);
+}
+
+/* bottom */
+body.docked-toolbar #toolbar[data-dock="bottom"] {
+  bottom: 0;
+  left: 50%;
+  max-width: 96vw;
+  transform: translate(-50%, 110%);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+body.docked-toolbar.dock-open #toolbar[data-dock="bottom"] {
+  transform: translate(-50%, 0);
+}
+
+/* Left/right docks stack vertically, so the row becomes a column. */
+body.docked-toolbar #toolbar[data-dock="left"],
+body.docked-toolbar #toolbar[data-dock="right"] {
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* ---- Backdrop ---- */
+.dock-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+body.docked-toolbar.dock-open .dock-scrim {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---- Corner handle ---- */
+.dock-handle {
+  position: fixed;
+  z-index: 41;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 1px;
+  padding-bottom: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  /* Faint until touched, so it does not distract from reading. */
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+  touch-action: manipulation;
+}
+.dock-handle:active,
+body.docked-toolbar.dock-open .dock-handle {
+  opacity: 0.95;
+}
+
+.dock-handle[data-corner="tl"] {
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+}
+.dock-handle[data-corner="tr"] {
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+}
+.dock-handle[data-corner="bl"] {
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+}
+.dock-handle[data-corner="br"] {
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+}
+
+/* ==========================================================================
+   Phone viewport fixes
+
+   `100vh` on Android includes the URL-bar area and overflows, which is what put
+   a scrollbar on the welcome screen. `100dvh` tracks the visible box. The 80vh
+   bottom padding that desktop uses as a scroll runway is pointless here.
+   ========================================================================== */
+
+body.docked-toolbar #layout {
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+body.docked-toolbar #content {
+  /* No desktop scroll runway on a phone. */
+  padding-bottom: 40px;
+  padding-left: calc(14px + env(safe-area-inset-left, 0px));
+  padding-right: calc(14px + env(safe-area-inset-right, 0px));
+}
+
+/* Narrow screens: let prose use the full width instead of the 860px measure. */
+body.docked-toolbar #content > * {
+  max-width: 100%;
+}
+
+body.docked-toolbar .empty-state h1 {
+  /* The long title wrapped mid-word on a 390px screen. */
+  font-size: clamp(20px, 7vw, 30px);
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+body.docked-toolbar .empty-state {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* The TOC and file panels are fixed-width sidebars; on a portrait phone a
+   264px sidebar leaves almost nothing for the text. Make them overlays. */
+body.docked-toolbar #toc {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(78vw, 300px);
+  flex: none;
+  z-index: 30;
+  background: var(--bg);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
+  padding-top: calc(24px + env(safe-area-inset-top, 0px));
+  max-height: 100dvh;
+}

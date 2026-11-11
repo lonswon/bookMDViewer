@@ -10,6 +10,7 @@ import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { PhysicalSize } from "@tauri-apps/api/dpi";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { DockController, parseSide, parseCorner } from "./dock";
 
 // hljs theme CSS as strings, so HTML export can be fully self-contained.
 import hljsLightCss from "highlight.js/styles/github.css?inline";
@@ -19,6 +20,10 @@ import hljsDarkCss from "highlight.js/styles/github-dark.css?inline";
 // Android: scoped storage means we must go through the Storage Access Framework
 // and get back a `content://` URI that the backend can actually read.
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
+
+/// Whether the dockable-sidebar toolbar should replace the floating bar.
+/// Android only: desktop keeps the hover-based bar byte-for-byte.
+const USE_DOCKED_TOOLBAR = IS_ANDROID;
 
 /// Human-readable name for a path or a `content://` document URI.
 /// SAF URIs percent-encode the filename as the last segment, e.g.
@@ -977,6 +982,8 @@ const TOOLBAR_BUTTONS: ToolbarButton[] = [
 ];
 const TOOLBAR_ORDER_KEY = "toolbarOrder";
 const TOOLBAR_HIDDEN_KEY = "toolbarHidden";
+const DOCK_SIDE_KEY = "dockSide";
+const DOCK_CORNER_KEY = "dockCorner";
 
 const toolbarEl = document.getElementById("toolbar") as HTMLElement;
 const toolbarHotzone = document.getElementById("toolbar-hotzone") as HTMLElement;
@@ -1161,11 +1168,55 @@ function hideToolbarSoon(): void {
   toolbarHideTimer = window.setTimeout(hideToolbar, 220);
 }
 
-// Approaching the top edge reveals the bar; leaving it starts the hide timer.
-toolbarHotzone.addEventListener("mouseenter", showToolbar);
-toolbarHotzone.addEventListener("mouseleave", hideToolbarSoon);
-toolbarEl.addEventListener("mouseenter", showToolbar);
-toolbarEl.addEventListener("mouseleave", hideToolbarSoon);
+// Android swaps the hover model for the docked sheet (see src/dock.ts). On
+// desktop the original hover behaviour is registered exactly as before.
+let dock: DockController | null = null;
+
+if (USE_DOCKED_TOOLBAR) {
+  dock = new DockController({
+    bar: toolbarEl,
+    hotzone: toolbarHotzone,
+    side: parseSide(localStorage.getItem(DOCK_SIDE_KEY)),
+    handleCorner: parseCorner(localStorage.getItem(DOCK_CORNER_KEY)),
+    storageKey: DOCK_SIDE_KEY,
+    onToggle: () => {
+      // The reading position shifts when the sheet overlays the text.
+      syncToolbarHotzone();
+    },
+  });
+} else {
+  // Approaching the top edge reveals the bar; leaving it starts the hide timer.
+  toolbarHotzone.addEventListener("mouseenter", showToolbar);
+  toolbarHotzone.addEventListener("mouseleave", hideToolbarSoon);
+  toolbarEl.addEventListener("mouseenter", showToolbar);
+  toolbarEl.addEventListener("mouseleave", hideToolbarSoon);
+}
+
+// Dock settings are Android-only; on desktop the hint text and the selects stay
+// out of the way entirely.
+const dockSettingsEl = document.getElementById("dock-settings") as HTMLElement | null;
+const dockSideSel = document.getElementById("dock-side") as HTMLSelectElement | null;
+const dockCornerSel = document.getElementById("dock-corner") as HTMLSelectElement | null;
+const tbHintDesktop = document.getElementById("tb-hint-desktop") as HTMLElement | null;
+
+if (USE_DOCKED_TOOLBAR && dock && dockSettingsEl && dockSideSel && dockCornerSel) {
+  dockSettingsEl.hidden = false;
+  if (tbHintDesktop) tbHintDesktop.hidden = true;
+
+  dockSideSel.value = parseSide(localStorage.getItem(DOCK_SIDE_KEY));
+  dockCornerSel.value = parseCorner(localStorage.getItem(DOCK_CORNER_KEY));
+
+  dockSideSel.addEventListener("change", () => {
+    const side = parseSide(dockSideSel.value);
+    localStorage.setItem(DOCK_SIDE_KEY, side);
+    dock?.applySide(side);
+  });
+  dockCornerSel.addEventListener("change", () => {
+    const corner = parseCorner(dockCornerSel.value);
+    localStorage.setItem(DOCK_CORNER_KEY, corner);
+    dock?.applyCorner(corner);
+  });
+}
 
 // Keyboard users: focusing any button must bring the bar into view.
 toolbarEl.addEventListener("focusin", showToolbar);
@@ -1174,8 +1225,10 @@ toolbarEl.addEventListener("focusout", () => {
   window.setTimeout(hideToolbar, 0);
 });
 
-// Leaving the window entirely also hides it.
-document.addEventListener("mouseleave", hideToolbarSoon);
+// Leaving the window entirely also hides it (desktop only).
+if (!USE_DOCKED_TOOLBAR) {
+  document.addEventListener("mouseleave", hideToolbarSoon);
+}
 
 // Expose a pin/unpin pair for dialogs opened from the toolbar.
 function setToolbarPinned(pinned: boolean): void {
@@ -1183,8 +1236,8 @@ function setToolbarPinned(pinned: boolean): void {
   if (pinned) showToolbar();
 }
 
-// First run: show the bar briefly so new users discover it.
-if (localStorage.getItem("toolbarSeen") !== "1") {
+// First run: show the bar briefly so new users discover it (desktop only).
+if (!USE_DOCKED_TOOLBAR && localStorage.getItem("toolbarSeen") !== "1") {
   showToolbar();
   window.setTimeout(() => {
     localStorage.setItem("toolbarSeen", "1");
@@ -1581,6 +1634,33 @@ document.getElementById("about-github")?.addEventListener("click", () => {
 
 // ---------- Open file dialog + recent files ----------
 //
+/// Ensure the app can reach storage, asking once if needed.
+///
+/// Returns false only when the user explicitly denied it, so callers can explain
+/// why the picker is about to fail. Cached for the session: re-asking on every
+/// file open would be noise.
+let storagePermission: boolean | null = null;
+async function ensureStoragePermission(): Promise<boolean> {
+  if (!IS_ANDROID) return true;
+  if (storagePermission !== null) return storagePermission;
+  try {
+    const already = await invoke<boolean>("has_storage_permission");
+    if (already) {
+      storagePermission = true;
+      return true;
+    }
+    storagePermission = await invoke<boolean>("request_storage_permission");
+    if (!storagePermission) {
+      toast("未获得存储权限，可能无法打开文件");
+    }
+  } catch (e) {
+    // A failing permission probe must not block the picker: SAF can still work.
+    console.warn("storage permission check failed", e);
+    storagePermission = true;
+  }
+  return storagePermission;
+}
+
 async function pickFile(): Promise<string | null> {
   if (!IS_ANDROID) {
     const selected = await openDialog({
@@ -1589,6 +1669,10 @@ async function pickFile(): Promise<string | null> {
     });
     return typeof selected === "string" ? selected : null;
   }
+  // Make sure the app actually holds storage access before opening the picker.
+  // On Android 11+ this is a no-op that resolves true; on 10 and below it is what
+  // triggers the system permission dialog.
+  await ensureStoragePermission();
   const fs = await import("tauri-plugin-android-fs-api");
   // Returns an array; we asked for a single pick.
   const picked = await fs.showOpenFilePicker({

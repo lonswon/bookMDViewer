@@ -29,7 +29,14 @@ notify = "6"
 # `protocol_content` registers the `android-fs-content:` custom protocol so
 # images referenced by a content:// URI can render inside the webview.
 [target.'cfg(target_os = "android")'.dependencies]
-tauri-plugin-android-fs = { version = "=29.0.0", features = ["protocol_content"] }
+# `legacy_storage_permission` declares READ/WRITE_EXTERNAL_STORAGE in the merged
+# manifest for Android <= 9, where SAF is not enough on its own. Android 10+
+# needs no storage permission for SAF-picked documents; the request just
+# succeeds immediately, which keeps one code path across versions.
+tauri-plugin-android-fs = { version = "=29.0.0", features = [
+  "protocol_content",
+  "legacy_storage_permission",
+] }
 
 # Smallest possible release binary.
 [profile.release]

@@ -115,8 +115,34 @@
           <p class="settings-hint">
             勾选要显示的按钮，用 ↑ ↓ 调整顺序。「设置」按钮固定显示，不能隐藏。
           </p>
+          <!-- Android only: pick which edge the toolbar sheet docks to, and
+               which screen corner holds the opener handle. Hidden on desktop
+               where the floating bar's top-edge hover is still in charge. -->
+          <div id="dock-settings" hidden>
+            <div class="settings-row">
+              <label for="dock-side">工具栏位置</label>
+              <select id="dock-side">
+                <option value="left">左侧</option>
+                <option value="right">右侧</option>
+                <option value="top">顶部</option>
+                <option value="bottom">底部</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label for="dock-corner">「···」按钮位置</label>
+              <select id="dock-corner">
+                <option value="tl">左上角</option>
+                <option value="tr">右上角</option>
+                <option value="bl">左下角</option>
+                <option value="br">右下角</option>
+              </select>
+            </div>
+            <p class="settings-hint">
+              点「···」按钮，或从对应屏幕边缘向里滑动，即可唤出工具栏。
+            </p>
+          </div>
           <div id="tb-list" class="tb-list"></div>
-          <p class="settings-hint tb-hint-bottom">
+          <p class="settings-hint tb-hint-bottom" id="tb-hint-desktop">
             鼠标移到窗口顶部边缘即可唤出工具栏，移开自动收起。
           </p>
           <div class="settings-pane-actions">

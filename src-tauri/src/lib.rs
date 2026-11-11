@@ -244,6 +244,52 @@ fn write_md(app: tauri::AppHandle, path: String, content: String) -> Result<(), 
     }
 }
 
+/// Ask the OS for storage access.
+///
+/// Android 11+ needs nothing for SAF-picked documents, and the call resolves
+/// immediately with `true`. Android 9 and below really does gate public-storage
+/// access behind READ/WRITE_EXTERNAL_STORAGE, which the
+/// `legacy_storage_permission` feature declares in the merged manifest — this is
+/// what shows the system permission dialog there.
+#[tauri::command]
+fn request_storage_permission(app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::AndroidFsExt;
+        return app
+            .android_fs()
+            .public_storage()
+            .request_permission()
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        // No concept of a runtime storage permission on desktop.
+        let _ = app;
+        Ok(true)
+    }
+}
+
+/// Whether storage access is already granted, so the UI can decide whether to
+/// show a "grant access" affordance.
+#[tauri::command]
+fn has_storage_permission(app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::AndroidFsExt;
+        return app
+            .android_fs()
+            .public_storage()
+            .check_permission()
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(true)
+    }
+}
+
 /// Begin watching `path`; emits `md-changed` whenever the file is modified.
 /// We watch the *parent directory* (non-recursive) because many editors save
 /// by replacing the file, which breaks a watch placed directly on the file.
@@ -323,7 +369,9 @@ pub fn run() {
             write_md,
             list_dir,
             open_new_window,
-            watch_file
+            watch_file,
+            request_storage_permission,
+            has_storage_permission
         ])
         .setup(|_app| {
             #[cfg(target_os = "android")]
