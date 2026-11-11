@@ -1,0 +1,7 @@
+{
+  "identifier": "android-fs",
+  "description": "Storage Access Framework access on Android. Kept in its own capability because the plugin is only compiled for the Android target; listing these permissions in the shared capability makes desktop builds fail with \"Permission android-fs:default not found\".",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": ["android-fs:default"]
+}

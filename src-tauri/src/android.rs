@@ -8,6 +8,9 @@
 //! The desktop builds keep using `std::fs`; this module provides the same
 //! operations (`read_md`, `write_md`, `list_dir`) for the Android target on top
 //! of the `tauri-plugin-android-fs` crate.
+//!
+//! Written against tauri-plugin-android-fs 29.0.0, whose `Entry` is an enum and
+//! whose `FsUri` has no `Display` impl (use the `.uri` field).
 
 use tauri::Runtime;
 use tauri_plugin_android_fs::{AndroidFsExt, Entry, FsUri};
@@ -78,9 +81,11 @@ pub fn list_dir<R: Runtime>(app: &tauri::AppHandle<R>, uri: &str) -> Result<DirL
     // Always make sure the open document itself is present, even when the
     // parent folder was not readable.
     if entries.is_empty() {
-        if let Ok(meta) = fs.get_metadata(&fs_uri) {
-            push_if_browsable(&mut entries, &meta);
-        }
+        entries.push(DirEntry {
+            name: name_from_uri(uri),
+            path: uri.to_string(),
+            is_dir: false,
+        });
     }
 
     entries.sort_by(|a, b| {
@@ -92,19 +97,19 @@ pub fn list_dir<R: Runtime>(app: &tauri::AppHandle<R>, uri: &str) -> Result<DirL
     Ok(DirListing {
         dir: dir_uri
             .as_ref()
-            .map(|u| u.to_string())
+            .map(|u| u.uri.clone())
             .unwrap_or_else(|| uri.to_string()),
         parent: dir_uri
             .as_ref()
             .and_then(|u| fs.resolve_dir_uri(u, "..").ok())
-            .map(|u| u.to_string()),
+            .map(|u| u.uri),
         entries,
     })
 }
 
 /// Keep folders and Markdown documents; drop everything else.
 fn push_if_browsable(entries: &mut Vec<DirEntry>, entry: &Entry) {
-    let Ok(name) = entry.name_or_err() else { return };
+    let name = entry.name();
     if name.starts_with('.') {
         return;
     }
@@ -116,10 +121,40 @@ fn push_if_browsable(entries: &mut Vec<DirEntry>, entry: &Entry) {
     if !is_dir && !is_md {
         return;
     }
-    let Ok(uri) = entry.uri_or_err() else { return };
     entries.push(DirEntry {
         name: name.to_string(),
-        path: uri.to_string(),
+        path: entry.uri().uri.clone(),
         is_dir,
     });
+}
+
+/// Decode the human-readable file name out of a `content://` document URI.
+///
+/// The last segment is a percent-encoded document id such as
+/// `primary%3ANotes%2Ftodo.md`, so the name is everything after the last `/`.
+fn name_from_uri(uri: &str) -> String {
+    let last = uri.rsplit('/').next().unwrap_or(uri);
+    let decoded = percent_decode(last);
+    let tail = decoded.rsplit(':').next().unwrap_or(&decoded);
+    tail.rsplit('/').next().unwrap_or(tail).to_string()
+}
+
+/// Minimal percent-decoder for URI path segments.
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = &s[i + 1..i + 3];
+            if let Ok(v) = u8::from_str_radix(hex, 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
