@@ -222,17 +222,54 @@ jobs:
       - name: Build Android APK
         run: npx tauri android build --apk --target aarch64
 
-      - name: Collect signed artifacts
+      # The release build emits an *unsigned* APK. Sign it with a locally
+      # generated debug keystore so the artifact installs on a phone for testing.
+      # A real release keystore (base64 in ANDROID_KEYSTORE_BASE64, plus
+      # ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS) is used when configured,
+      # so the same workflow covers a store-ready build later.
+      - name: Sign APK
         shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -euo pipefail
           mkdir -p out
-          # Universal + split APKs land under gen/android/app/build/outputs.
-          find src-tauri/gen/android -name "*.apk" -type f | while read -r f; do
-            echo "found: $f"
-            cp "$f" "out/$(basename "$f")"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APKSIGNER="$BT/apksigner"
+          echo "using $APKSIGNER"
+
+          WORK=$(mktemp -d)
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "== using provided release keystore =="
+            echo "$KEYSTORE_B64" | base64 -d > "$WORK/release.keystore"
+            KS="$WORK/release.keystore"
+            KSPASS="${KEYSTORE_PASS:?keystore password secret missing}"
+            ALIAS="${KEY_ALIAS:?key alias secret missing}"
+            OUTSUFFIX="arm64"
+          else
+            echo "== generating debug keystore =="
+            KS="$WORK/debug.keystore"
+            KSPASS="android"
+            ALIAS="androiddebugkey"
+            OUTSUFFIX="arm64-debug"
+            keytool -genkeypair -v               -keystore "$KS" -storepass "$KSPASS" -keypass "$KSPASS"               -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000               -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+          fi
+
+          shopt -s nullglob
+          found=0
+          for f in $(find src-tauri/gen/android -name "*.apk" -type f); do
+            found=1
+            base=$(basename "$f" .apk)
+            dst="out/MarkdownViewer-${OUTSUFFIX}-${base%-unsigned}.apk"
+            echo "signing $f -> $dst"
+            "$APKSIGNER" sign               --ks "$KS" --ks-pass "pass:$KSPASS" --key-pass "pass:$KSPASS"               --ks-key-alias "$ALIAS"               --out "$dst" "$f"
+            "$APKSIGNER" verify --print-certs "$dst" | head -5
           done
+          [ "$found" = 1 ] || { echo "::error::no APK found to sign"; exit 1; }
           ls -la out/
+          rm -rf "$WORK"
 
       - name: Upload APKs to release
         if: startsWith(github.ref, 'refs/tags/')
