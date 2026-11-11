@@ -1668,3 +1668,20 @@ body.docked-toolbar #toc {
 body.no-statusbar {
   --statusbar-h: 0px;
 }
+
+/* Four tabs no longer fit a portrait phone; let the strip scroll sideways
+   instead of wrapping into a second row. */
+body.docked-toolbar .settings-tabs {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+body.docked-toolbar .settings-tabs::-webkit-scrollbar {
+  display: none;
+}
+body.docked-toolbar .settings-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 8px 10px;
+}

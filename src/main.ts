@@ -1532,7 +1532,7 @@ async function populateInstalledFonts(): Promise<void> {
 }
 
 // ---------- Settings tabs ----------
-type SettingsTab = "font" | "toolbar" | "about";
+type SettingsTab = "font" | "toolbar" | "statusbar" | "about";
 let activeSettingsTab: SettingsTab = "font";
 
 function activateSettingsTab(tab: SettingsTab): void {
@@ -1556,7 +1556,7 @@ for (const btn of settingsModal.querySelectorAll<HTMLElement>(".settings-tab")) 
   });
   // Left/Right arrows move between tabs, as expected of a tablist.
   btn.addEventListener("keydown", (ev) => {
-    const order: SettingsTab[] = ["font", "toolbar", "about"];
+    const order: SettingsTab[] = ["font", "toolbar", "statusbar", "about"];
     const i = order.indexOf(btn.dataset.tab as SettingsTab);
     if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
     ev.preventDefault();
