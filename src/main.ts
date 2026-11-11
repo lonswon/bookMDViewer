@@ -44,6 +44,31 @@ function displayName(pathOrUri: string): string {
   return tail.split("/").pop() || tail;
 }
 
+/// Human-readable *folder* part of a `content://` document URI, or "" when there
+/// is nothing beyond the file name. Used for the secondary line in "recent
+/// files", where repeating the file name would be pointless.
+function documentPathHint(uri: string): string {
+  if (!uri.startsWith("content://")) {
+    // Plain path: drop the file name, keep the directory.
+    const m = uri.match(/^(.*)[\\/][^\\/]*$/);
+    return m ? m[1] : "";
+  }
+  const last = uri.split("/").pop() ?? "";
+  let decoded = last;
+  try {
+    decoded = decodeURIComponent(last);
+  } catch {
+    return "";
+  }
+  // `primary:Notes/todo.md` -> volume `primary`, folders `Notes`
+  const colon = decoded.indexOf(":");
+  const volume = colon >= 0 ? decoded.slice(0, colon) : "";
+  const rest = colon >= 0 ? decoded.slice(colon + 1) : decoded;
+  const folder = rest.replace(/\/[^/]*$/, "");
+  if (!folder) return volume ? `${volume}:` : "";
+  return volume ? `${volume}:${folder}` : folder;
+}
+
 /// Turn a relative image path into a sibling `content://` URI next to the open
 /// document. Works only for external-storage style document ids
 /// (`primary:Notes/todo.md`); anything else is returned unchanged so the image
@@ -201,7 +226,7 @@ const toastEl = document.getElementById("toast") as HTMLElement;
 const appWindow = getCurrentWindow();
 const EMPTY_STATE_HTML = `<div class="empty-state">
   <h1>Markdown 阅读器</h1>
-  <p>Drag a <code>.md</code> file here, or <a id="empty-open" href="#">open one</a>.</p>
+  <p>把 <code>.md</code> 文件拖到这里，或<a id="empty-open" href="#">打开一个</a>。</p>
   <p class="app-version"><a id="about-open" href="#">关于 / About</a></p>
   <div id="recent-list"></div>
 </div>`;
@@ -584,7 +609,14 @@ const statusBar = document.getElementById("statusbar") as HTMLElement;
 const sbCounts = document.getElementById("sb-counts") as HTMLElement;
 const sbPath = document.getElementById("sb-path") as HTMLElement;
 const sbProgress = document.getElementById("sb-progress") as HTMLElement;
+const sbPathRow = document.getElementById("sb-path-row") as HTMLElement;
 const SHOW_PATH_KEY = "showPath";
+const SHOW_STATUSBAR_KEY = "showStatusBar";
+
+/** Whether the bottom status bar is drawn at all (default: yes). */
+function showStatusBarEnabled(): boolean {
+  return localStorage.getItem(SHOW_STATUSBAR_KEY) !== "false";
+}
 
 function showPathEnabled(): boolean {
   return localStorage.getItem(SHOW_PATH_KEY) === "true";
@@ -626,19 +658,34 @@ function countText(text: string): { chars: number; words: number } {
   return { chars, words: cjk + latinWords };
 }
 
+/** Publish the bar's rendered height so `#content` can reserve exactly that. */
+function syncStatusBarHeight(): void {
+  const root = document.documentElement;
+  if (statusBar.hidden) {
+    root.style.setProperty("--statusbar-h", "0px");
+    return;
+  }
+  const h = Math.ceil(statusBar.getBoundingClientRect().height);
+  root.style.setProperty("--statusbar-h", `${h}px`);
+}
+
 function updateStatusBar(): void {
-  const hasDoc = currentPath !== null;
+  const hasDoc = currentPath !== null && showStatusBarEnabled();
   statusBar.hidden = !hasDoc;
+  syncStatusBarHeight();
   if (!hasDoc) return;
 
   const source = editMode ? editor.value : currentText;
   const { chars, words } = countText(source);
   sbCounts.textContent = `${chars} 字符 · ${words} 词`;
 
-  sbPath.hidden = !showPathEnabled();
-  if (!sbPath.hidden) {
-    sbPath.textContent = currentPath ?? "";
-    sbPath.title = currentPath ?? "";
+  // The path lives on its own row so it never competes with the counts.
+  const wantsPath = showPathEnabled();
+  sbPathRow.hidden = !wantsPath;
+  if (wantsPath) {
+    const label = currentPath ?? "";
+    sbPath.textContent = label;
+    sbPath.title = label;
   }
 
   const max = content.scrollHeight - content.clientHeight;
@@ -984,6 +1031,7 @@ const TOOLBAR_ORDER_KEY = "toolbarOrder";
 const TOOLBAR_HIDDEN_KEY = "toolbarHidden";
 const DOCK_SIDE_KEY = "dockSide";
 const DOCK_CORNER_KEY = "dockCorner";
+const DOCK_HANDLE_KEY = "dockHandleVisible";
 
 const toolbarEl = document.getElementById("toolbar") as HTMLElement;
 const toolbarHotzone = document.getElementById("toolbar-hotzone") as HTMLElement;
@@ -1178,6 +1226,9 @@ if (USE_DOCKED_TOOLBAR) {
     hotzone: toolbarHotzone,
     side: parseSide(localStorage.getItem(DOCK_SIDE_KEY)),
     handleCorner: parseCorner(localStorage.getItem(DOCK_CORNER_KEY)),
+    // Default on: without it a user who has not discovered tap-to-reveal has
+    // no visible way in at all.
+    handleVisible: localStorage.getItem(DOCK_HANDLE_KEY) !== "false",
     storageKey: DOCK_SIDE_KEY,
     onToggle: () => {
       // The reading position shifts when the sheet overlays the text.
@@ -1542,7 +1593,19 @@ settingsModal.addEventListener("click", (ev) => {
 });
 applyReadingFont();
 
-// ---------- Status bar: show-full-path preference ----------
+// ---------- Status bar preferences ----------
+// Two independent switches: whether the bar exists, and whether it carries the
+// full path on its own row.
+const showStatusBarToggle = document.getElementById("show-statusbar") as HTMLInputElement;
+showStatusBarToggle.checked = showStatusBarEnabled();
+showStatusBarToggle.addEventListener("change", () => {
+  localStorage.setItem(SHOW_STATUSBAR_KEY, String(showStatusBarToggle.checked));
+  // Hiding the bar also hides the path row, so drop the reserved space too.
+  document.body.classList.toggle("no-statusbar", !showStatusBarToggle.checked);
+  updateStatusBar();
+});
+document.body.classList.toggle("no-statusbar", !showStatusBarEnabled());
+
 const showPathToggle = document.getElementById("show-path") as HTMLInputElement;
 showPathToggle.checked = showPathEnabled();
 showPathToggle.addEventListener("change", () => {
@@ -1552,6 +1615,8 @@ showPathToggle.addEventListener("change", () => {
 
 // Keep the progress percentage live while scrolling.
 content.addEventListener("scroll", updateStatusBar, { passive: true });
+// The bar changes height when the path row appears, so re-measure on resize too.
+window.addEventListener("resize", syncStatusBarHeight);
 
 // Clicking the path in the status bar copies it.
 sbPath.addEventListener("click", () => void copyPathToClipboard());
@@ -1739,10 +1804,16 @@ function renderRecents(): void {
     name.textContent = displayName(p);
     const full = document.createElement("span");
     full.className = "rf-path";
-    // A content:// URI is unreadable on screen, so the sub-line carries the
-    // decoded file name instead of the raw grant string.
-    full.textContent = IS_ANDROID ? displayName(p) : p;
-    a.append(name, full);
+    // A raw content:// URI is unreadable, so on Android the sub-line shows the
+    // decoded document path (minus the file name, which the title already has).
+    // Falling back to the name alone would just repeat the line above.
+    const sub = IS_ANDROID ? documentPathHint(p) : p;
+    if (sub && sub !== displayName(p)) {
+      full.textContent = sub;
+      a.append(name, full);
+    } else {
+      a.append(name);
+    }
     a.addEventListener("click", (ev) => {
       ev.preventDefault();
       void openFile(p);

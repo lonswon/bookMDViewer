@@ -74,6 +74,9 @@
             <button class="settings-tab" role="tab" data-tab="toolbar" aria-selected="false" aria-controls="pane-toolbar">
               工具栏
             </button>
+            <button class="settings-tab" role="tab" data-tab="statusbar" aria-selected="false" aria-controls="pane-statusbar">
+              状态栏
+            </button>
             <button class="settings-tab" role="tab" data-tab="about" aria-selected="false" aria-controls="pane-about">
               关于与更新
             </button>
@@ -99,14 +102,25 @@
           <p class="settings-hint">
             字体列表会读取本机已安装的字体；直接输入字体家族名也可以。
           </p>
+        </section>
+
+        <!-- ---------- Pane: status bar ---------- -->
+        <section class="settings-pane" id="pane-statusbar" role="tabpanel" aria-labelledby="tab-statusbar">
+          <div class="settings-switch">
+            <label for="show-statusbar">显示底部状态栏</label>
+            <input type="checkbox" id="show-statusbar" />
+          </div>
+          <p class="settings-hint">
+            状态栏显示字数、阅读进度；打开文件后才出现。
+          </p>
 
           <div class="settings-sep"></div>
           <div class="settings-switch">
-            <label for="show-path">在状态栏显示完整文件路径</label>
+            <label for="show-path">显示完整文件路径</label>
             <input type="checkbox" id="show-path" />
           </div>
           <p class="settings-hint">
-            勾选后，底部状态栏会在字数旁边显示当前文件的完整路径。
+            勾选后，完整路径会单独占一行显示在状态栏上方，不与字数和进度挤在一行。
           </p>
         </section>
 
@@ -137,8 +151,12 @@
                 <option value="br">右下角</option>
               </select>
             </div>
+            <div class="settings-switch">
+              <label for="dock-handle-visible">显示「···」悬浮按钮</label>
+              <input type="checkbox" id="dock-handle-visible" />
+            </div>
             <p class="settings-hint">
-              点「···」按钮，或从对应屏幕边缘向里滑动，即可唤出工具栏。
+              在屏幕任意空白处点一下也能唤出工具栏；点一下别处就收起。
             </p>
           </div>
           <div id="tb-list" class="tb-list"></div>
@@ -222,13 +240,20 @@
     </div>
     <!-- Status bar: document metrics, reading progress, optional full path. -->
     <div id="statusbar" hidden>
-      <span class="sb-left">
-        <span id="sb-counts"></span>
-        <span id="sb-path" hidden></span>
-      </span>
-      <span class="sb-right">
-        <span id="sb-progress"></span>
-      </span>
+      <!-- The full path gets its own row above the counts: at 11px on a phone,
+           putting it inline with the character count and progress left nothing
+           readable in either. -->
+      <div class="sb-path-row" id="sb-path-row" hidden>
+        <span id="sb-path"></span>
+      </div>
+      <div class="sb-main-row">
+        <span class="sb-left">
+          <span id="sb-counts"></span>
+        </span>
+        <span class="sb-right">
+          <span id="sb-progress"></span>
+        </span>
+      </div>
     </div>
   </body>
 </html>

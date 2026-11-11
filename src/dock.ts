@@ -5,16 +5,17 @@
 // Android gets this instead:
 //
 //   * the same buttons, laid out along one screen edge (top/right/bottom/left),
-//   * revealed by dragging *inward* from that edge, or by tapping a small
-//     persistent handle,
-//   * hidden again on tap-outside or after an idle delay.
+//   * revealed by tapping (nearly) anywhere on the page, or by tapping the
+//     optional persistent handle,
+//   * hidden again on the next tap or after an idle delay.
 //
 // Nothing here runs on desktop: `USE_DOCKED_TOOLBAR` is false there and the
 // original hover logic in main.ts is left untouched.
 //
-// Edge-swipe caveat: Android reserves screen edges for system gestures (back,
-// home, notification shade). A pure inward swipe is therefore unreliable, which
-// is why the handle exists — it is the guaranteed way in.
+// Why tap instead of an edge swipe: Android reserves every screen edge for
+// system gestures (back, home, notification shade), so an inward drag is
+// unreliable at best and navigates away at worst. A plain tap has no such
+// conflict, works one-handed, and needs no aiming.
 
 export type DockSide = "left" | "right" | "top" | "bottom";
 export type HandleCorner = "tl" | "tr" | "bl" | "br";
@@ -26,6 +27,8 @@ export interface DockOptions {
   hotzone: HTMLElement;
   side: DockSide;
   handleCorner: HandleCorner;
+  /** Whether the floating "..." opener is drawn at all. */
+  handleVisible: boolean;
   /** Where to persist the side/corner choice. */
   storageKey: string;
   /** Called after the sheet opens or closes, so callers can re-measure layout. */
@@ -35,12 +38,13 @@ export interface DockOptions {
 const SIDES: DockSide[] = ["left", "right", "top", "bottom"];
 const CORNERS: HandleCorner[] = ["tl", "tr", "bl", "br"];
 
-/** How far from an edge a drag must start, in px. */
-const EDGE_ZONE = 24;
-/** How far inward the finger must travel to count as a reveal, in px. */
-const SWIPE_MIN = 28;
 /** Idle time before an untouched sheet closes itself, in ms. */
 const IDLE_CLOSE = 6000;
+/**
+ * Taps this close to a link, button or input belong to that control, not to the
+ * reveal gesture — otherwise tapping "打开一个" would open the toolbar instead.
+ */
+const INTERACTIVE = "a,button,input,textarea,select,label,[contenteditable]"
 
 export class DockController {
   private opts: DockOptions;
@@ -48,7 +52,6 @@ export class DockController {
   private handle: HTMLButtonElement;
   private scrim: HTMLDivElement;
   private idleTimer: number | undefined;
-  private touchStart: { x: number; y: number; t: number } | null = null;
 
   constructor(opts: DockOptions) {
     this.opts = opts;
@@ -72,16 +75,21 @@ export class DockController {
     this.handle = document.createElement("button");
     this.handle.type = "button";
     this.handle.className = "dock-handle";
-    this.handle.setAttribute(
-      "aria-label",
-      "工具栏（点按或从屏幕边缘向内滑动打开）",
-    );
-    this.handle.textContent = "···";
-    this.handle.addEventListener("click", () => this.setOpen(!this.open));
+    this.handle.setAttribute("aria-label", "打开工具栏");
+    // Three dots as three separate spans so the gaps are exact rather than
+    // coming from font letter-spacing, which is what made the glyph look
+    // off-centre and the dots too small.
+    this.handle.innerHTML =
+      '<span class="dock-dot"></span><span class="dock-dot"></span><span class="dock-dot"></span>';
+    this.handle.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this.setOpen(!this.open);
+    });
     document.body.appendChild(this.handle);
 
     this.applySide(side);
     this.applyCorner(handleCorner);
+    this.setHandleVisible(opts.handleVisible);
     this.bindGestures();
 
     // Start closed: opening on launch would cover the welcome screen.
@@ -100,6 +108,12 @@ export class DockController {
   applyCorner(corner: HandleCorner): void {
     this.opts.handleCorner = corner;
     this.handle.setAttribute("data-corner", corner);
+  }
+
+  /** Show or hide the floating "..." opener. */
+  setHandleVisible(visible: boolean): void {
+    this.opts.handleVisible = visible;
+    this.handle.hidden = !visible;
   }
 
   get isOpen(): boolean {
@@ -121,82 +135,47 @@ export class DockController {
   }
 
   /**
-   * Reveal by dragging inward from a screen edge.
+   * Reveal with a tap, close with the next tap.
    *
-   * The gesture must *start* within EDGE_ZONE of the matching edge and move
-   * away from it by SWIPE_MIN. We deliberately use touch events rather than
-   * pointer events so a mouse on a phone-sized window can never trigger it.
+   * A clipboard-style double-tap-to-select, scroll, or a tap on a real control
+   * must not toggle the sheet, so those are filtered out. `click` is used
+   * rather than `touchend` because the browser already discards drags and
+   * long-presses for us.
    */
   private bindGestures(): void {
     document.addEventListener(
-      "touchstart",
+      "click",
       (ev) => {
-        const t = ev.touches[0];
-        if (!t) return;
-        // Zeros while another element owns the gesture (e.g. sheet scrolling).
-        this.touchStart = { x: t.clientX, y: t.clientY, t: Date.now() };
-      },
-      { passive: true },
-    );
+        const target = ev.target as HTMLElement | null;
+        if (!target) return;
+        // The sheet's own buttons and the handle manage their own state.
+        if (this.opts.bar.contains(target)) return;
+        if (this.handle.contains(target)) return;
 
-    document.addEventListener(
-      "touchmove",
-      (ev) => {
-        const start = this.touchStart;
-        if (!start) return;
-        const t = ev.touches[0];
-        if (!t) return;
-
-        const dx = t.clientX - start.x;
-        const dy = t.clientY - start.y;
-
-        // Swiping on the open sheet itself must scroll, not re-reveal.
-        const target = ev.target as Node | null;
-        if (this.open && target && this.opts.bar.contains(target)) return;
-
-        if (this.detectEdgeSwipe(start.x, start.y, dx, dy)) {
-          this.touchStart = null;
-          this.setOpen(true);
+        if (this.open) {
+          // Any tap outside dismisses, including on links — but let the link
+          // do its job first by not swallowing the event.
+          this.setOpen(false);
+          return;
         }
-      },
-      { passive: true },
-    );
 
-    document.addEventListener(
-      "touchend",
-      () => {
-        this.touchStart = null;
+        // Closed: tapping a control should activate it, not open the toolbar.
+        if (target.closest(INTERACTIVE)) return;
+
+        // Ignore the tail of a text selection (a tap that ends a selection).
+        const sel = window.getSelection?.();
+        if (sel && !sel.isCollapsed && (sel.toString().length > 0)) return;
+
+        this.setOpen(true);
       },
-      { passive: true },
+      // Capture phase so a tap that a later handler stops still toggles.
+      { capture: false },
     );
 
     // Escape closes, matching the desktop dialogs.
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && this.open) this.setOpen(false);
     });
-  }
-
-  /** True if this drag looks like an inward reveal from the active edge. */
-  private detectEdgeSwipe(
-    startX: number,
-    startY: number,
-    dx: number,
-    dy: number,
-  ): boolean {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    switch (this.opts.side) {
-      case "left":
-        return startX <= EDGE_ZONE && dx >= SWIPE_MIN && Math.abs(dx) > Math.abs(dy);
-      case "right":
-        return startX >= w - EDGE_ZONE && -dx >= SWIPE_MIN && Math.abs(dx) > Math.abs(dy);
-      case "top":
-        return startY <= EDGE_ZONE && dy >= SWIPE_MIN && Math.abs(dy) > Math.abs(dx);
-      case "bottom":
-        return startY >= h - EDGE_ZONE && -dy >= SWIPE_MIN && Math.abs(dy) > Math.abs(dx);
-      default:
-        return false;
-    }
   }
 }
 

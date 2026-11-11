@@ -1265,33 +1265,54 @@ body.col-resizing * {
   bottom: 0;
   z-index: 9;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 26px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  /* Height is content-driven now: an optional path row sits above the counts. */
+  min-height: 26px;
   padding: 0 14px;
   border-top: 1px solid var(--border);
   background: var(--bg);
   color: var(--muted);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
+  /* Sit above the home indicator on a phone. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   user-select: none;
 }
 #statusbar[hidden] {
   display: none;
 }
-#statusbar .sb-left,
-#statusbar .sb-right {
+#statusbar .sb-main-row .sb-left,
+#statusbar .sb-main-row .sb-right {
   display: flex;
   align-items: center;
   gap: 14px;
   min-width: 0;
 }
+/* Its own full-width line: ellipsised, never competing with the counts. */
+#statusbar .sb-path-row {
+  display: block;
+  padding: 5px 0 2px;
+  border-bottom: 1px solid var(--border);
+}
+#statusbar .sb-path-row[hidden] {
+  display: none;
+}
+#statusbar .sb-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 26px;
+}
 #statusbar #sb-path {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 62vw;
+  max-width: 100%;
+  cursor: pointer;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 11px;
   opacity: 0.85;
@@ -1317,7 +1338,9 @@ body.col-resizing * {
 
 /* Leave room for the bar so the last line of a document is never covered. */
 #content {
-  padding-bottom: calc(80vh + 26px);
+  /* `--statusbar-h` is measured live in TS: the bar grows when the path row
+     is shown, and the last line of text must never hide behind it. */
+  padding-bottom: calc(80vh + var(--statusbar-h, 26px));
 }
 
 /* ---------- Settings: checkbox row ---------- */
@@ -1535,26 +1558,39 @@ body.docked-toolbar.dock-open .dock-scrim {
   z-index: 41;
   width: 46px;
   height: 46px;
+  /* Flex keeps the dot group optically centred. The old version used a text
+     glyph with letter-spacing plus `padding-bottom`, which pushed the dots off
+     centre and rendered them at font size — hence "too small, not centred". */
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 50%;
   background: var(--bg);
-  color: var(--muted);
-  font-size: 20px;
-  line-height: 1;
-  letter-spacing: 1px;
-  padding-bottom: 6px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
   /* Faint until touched, so it does not distract from reading. */
-  opacity: 0.45;
+  opacity: 0.5;
   transition: opacity 0.2s ease;
   touch-action: manipulation;
+  appearance: none;
+  -webkit-appearance: none;
 }
 .dock-handle:active,
 body.docked-toolbar.dock-open .dock-handle {
-  opacity: 0.95;
+  opacity: 1;
+}
+
+/* The three dots are drawn, not typed: 6px circles in a row read as "more"
+   and stay crisp at any density. */
+.dock-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg);
+  opacity: 0.75;
 }
 
 .dock-handle[data-corner="tl"] {
@@ -1588,8 +1624,8 @@ body.docked-toolbar #layout {
 }
 
 body.docked-toolbar #content {
-  /* No desktop scroll runway on a phone. */
-  padding-bottom: 40px;
+  /* No desktop scroll runway on a phone, but still clear the status bar. */
+  padding-bottom: calc(40px + var(--statusbar-h, 26px));
   padding-left: calc(14px + env(safe-area-inset-left, 0px));
   padding-right: calc(14px + env(safe-area-inset-right, 0px));
 }
@@ -1626,4 +1662,9 @@ body.docked-toolbar #toc {
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
   padding-top: calc(24px + env(safe-area-inset-top, 0px));
   max-height: 100dvh;
+}
+
+/* When the user turns the status bar off, stop reserving room for it. */
+body.no-statusbar {
+  --statusbar-h: 0px;
 }
