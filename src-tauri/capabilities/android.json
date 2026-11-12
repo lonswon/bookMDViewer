@@ -1,7 +1,10 @@
 {
   "identifier": "android-fs",
-  "description": "Storage Access Framework access on Android. Kept in its own capability because the plugin is only compiled for the Android target; listing these permissions in the shared capability makes desktop builds fail with \"Permission android-fs:default not found\".",
+  "description": "Storage Access Framework access on Android. Kept in its own capability because the plugin is only compiled for the Android target; listing these permissions in the shared capability makes desktop builds fail with \"Permission android-fs:default not found\". The extra write permission covers the explicit \"save as\" export, which the default set (all-without-delete) deliberately excludes.",
   "platforms": ["android"],
   "windows": ["main"],
-  "permissions": ["android-fs:default"]
+  "permissions": [
+    "android-fs:default",
+    "android-fs:allow-write-text-file"
+  ]
 }

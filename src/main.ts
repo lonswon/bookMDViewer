@@ -44,59 +44,6 @@ function displayName(pathOrUri: string): string {
   return tail.split("/").pop() || tail;
 }
 
-/// Human-readable *folder* part of a `content://` document URI, or "" when there
-/// is nothing beyond the file name. Used for the secondary line in "recent
-/// files", where repeating the file name would be pointless.
-function documentPathHint(uri: string): string {
-  if (!uri.startsWith("content://")) {
-    // Plain path: drop the file name, keep the directory.
-    const m = uri.match(/^(.*)[\\/][^\\/]*$/);
-    return m ? m[1] : "";
-  }
-  const last = uri.split("/").pop() ?? "";
-  let decoded = last;
-  try {
-    decoded = decodeURIComponent(last);
-  } catch {
-    return "";
-  }
-  // `primary:Notes/todo.md` -> volume `primary`, folders `Notes`
-  const colon = decoded.indexOf(":");
-  const volume = colon >= 0 ? decoded.slice(0, colon) : "";
-  const rest = colon >= 0 ? decoded.slice(colon + 1) : decoded;
-  const folder = rest.replace(/\/[^/]*$/, "");
-  if (!folder) return volume ? `${volume}:` : "";
-  return volume ? `${volume}:${folder}` : folder;
-}
-
-/// Turn a relative image path into a sibling `content://` URI next to the open
-/// document. Works only for external-storage style document ids
-/// (`primary:Notes/todo.md`); anything else is returned unchanged so the image
-/// simply fails to load rather than showing a broken URL.
-function resolveContentSibling(src: string): string {
-  if (!currentPath?.startsWith("content://")) return src;
-  const marker = "/document/";
-  const at = currentPath.indexOf(marker);
-  if (at < 0) return src;
-  const prefix = currentPath.slice(0, at + marker.length);
-  const docId = currentPath.slice(at + marker.length);
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(docId);
-  } catch {
-    return src;
-  }
-  // `primary:Notes/todo.md` → volume `primary`, path `Notes/todo.md`
-  const firstColon = decoded.indexOf(":");
-  if (firstColon < 0) return src;
-  const volume = decoded.slice(0, firstColon);
-  const docPath = decoded.slice(firstColon + 1);
-  const dir = docPath.replace(/\/[^/]*$/, "");
-  const cleaned = src.replace(/^\.\//, "");
-  const sibling = `${volume}:${dir}/${cleaned}`;
-  return prefix + encodeURIComponent(sibling).replace(/%2F/g, "/").replace(/%3A/g, ":");
-}
-
 
 // ---------- Color theme (system / light / dark) ----------
 type ThemePref = "system" | "light" | "dark";
@@ -209,6 +156,7 @@ const tocToggle = document.getElementById("toc-toggle") as HTMLButtonElement;
 const editor = document.getElementById("editor") as HTMLTextAreaElement;
 const editToggle = document.getElementById("edit-toggle") as HTMLButtonElement;
 const saveBtn = document.getElementById("save-btn") as HTMLButtonElement;
+const saveAsBtn = document.getElementById("save-as-btn") as HTMLButtonElement;
 const exportBtn = document.getElementById("export-btn") as HTMLButtonElement;
 const fontInc = document.getElementById("font-inc") as HTMLButtonElement;
 const fontDec = document.getElementById("font-dec") as HTMLButtonElement;
@@ -439,28 +387,30 @@ function makeTablesResizable(): void {
   });
 }
 
-// Resolve relative-path images against the open file's folder via the asset protocol.
+// Resolve relative-path images against the open file's folder.
 function resolveImages(): void {
   if (!currentPath) return;
-  // On Android the document sits behind a content:// URI. Relative images only
-  // resolve when the user opened the file through a *folder* grant, which is
-  // what `android-fs-content:` can serve — plain document grants cover one file.
-  if (IS_ANDROID) {
-    content.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
-      const src = img.getAttribute("src") ?? "";
-      if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return;
-      void import("tauri-plugin-android-fs-api").then((fs) => {
-        img.src = fs.convertFileSrc(resolveContentSibling(src));
-      }).catch(() => {});
-    });
-    return;
-  }
   const dir = currentPath.replace(/[\\/][^\\/]*$/, "");
   content.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
     const src = img.getAttribute("src") ?? "";
     // Skip absolute URLs (http:, data:, asset:, file:, …) and protocol-relative.
     if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return;
     const abs = `${dir}/${src}`.replace(/\\/g, "/");
+    if (IS_ANDROID) {
+      // Android has no `asset:` protocol and the sandbox path would need a
+      // fragile scope pattern, so read the bytes and inline them instead:
+      // one request, no scope rules, works for any nesting depth.
+      void import("tauri-plugin-android-fs-api")
+        .then((fs) => fs.readFileAsDataURL(abs))
+        .then((url) => {
+          img.src = url;
+        })
+        .catch(() => {
+          // Missing or unreadable image: leave the browser's broken-image state
+          // rather than inventing a placeholder.
+        });
+      return;
+    }
     img.src = convertFileSrc(abs);
   });
 }
@@ -669,6 +619,17 @@ function syncStatusBarHeight(): void {
   root.style.setProperty("--statusbar-h", `${h}px`);
 }
 
+/// Path to show in the UI for a document.
+///
+/// On Android the real path is an unreadable sandbox location such as
+/// `/data/user/0/com.craig.mdviewer/files/…`, so it is replaced with a short
+/// marker that tells the user this is the in-app copy rather than their
+/// original file.
+function pathForDisplay(path: string): string {
+  if (!IS_ANDROID) return path;
+  return `应用内副本 / ${displayName(path)}`;
+}
+
 function updateStatusBar(): void {
   const hasDoc = currentPath !== null && showStatusBarEnabled();
   statusBar.hidden = !hasDoc;
@@ -683,7 +644,7 @@ function updateStatusBar(): void {
   const wantsPath = showPathEnabled();
   sbPathRow.hidden = !wantsPath;
   if (wantsPath) {
-    const label = currentPath ?? "";
+    const label = pathForDisplay(currentPath ?? "");
     sbPath.textContent = label;
     sbPath.title = label;
   }
@@ -714,6 +675,9 @@ function setTitle(): void {
   // Hidden entirely when there is nothing to save: an untouched document
   // showing "saved" was noise, not information.
   setIconButton(saveBtn, ICON_SVG.save, "保存");
+  // Android: export the buffer to a real file. Always available while a
+  // document is open, because the sandbox copy is never the user's original.
+  saveAsBtn.hidden = !IS_ANDROID || !currentPath || userHidden("save-as-btn");
   closeDocBtn.hidden = !currentPath || userHidden("close-doc-btn");
 }
 
@@ -748,11 +712,12 @@ async function openFile(
     if (editMode) editor.value = text;
     setTitle();
     await renderMarkdown(text, preserveScroll);
-    // SAF has no inotify equivalent, so live-reload is desktop-only.
+    // The imported copy is an ordinary file, but `notify` itself is not built
+    // for Android, so live-reload stays desktop-only.
     if (watch && !IS_ANDROID) {
       await invoke("watch_file", { path });
     }
-    if (filesOpen && !IS_ANDROID) void renderFiles(dirOf(path));
+    if (filesOpen) void renderFiles(dirOf(path));
   } catch (e) {
     content.innerHTML = `<div class="empty-state"><p>${String(e)}</p></div>`;
     buildToc();
@@ -802,14 +767,43 @@ async function save(): Promise<void> {
     currentText = editor.value;
     dirty = false;
     setTitle();
+    // The private copy is what got written; tell the user where the real
+    // document still is, since editing here does not touch it.
+    if (IS_ANDROID) toast("已保存到应用内副本，需要覆盖原文件请用「另存为」");
   } catch (e) {
     console.error("save failed", e);
+  }
+}
+
+/// Android: write the current buffer out to a location the user picks.
+///
+/// This is the only path that produces a file the rest of the phone can see,
+/// because the working copy lives inside the app sandbox.
+async function saveAs(): Promise<void> {
+  if (!currentPath) {
+    toast("没有打开的文件");
+    return;
+  }
+  const name = displayName(currentPath);
+  try {
+    const fs = await import("tauri-plugin-android-fs-api");
+    const target = await fs.showSaveFilePicker(name, "text/markdown", {
+      localOnly: true,
+    });
+    if (!target) return;
+    const text = editMode ? editor.value : currentText;
+    await fs.writeTextFile(target, text);
+    toast(`已另存为 ${name}`);
+  } catch (e) {
+    toast(`另存为失败：${String(e)}`);
   }
 }
 
 editToggle.addEventListener("click", toggleEdit);
 editor.addEventListener("input", schedulePreview);
 saveBtn.addEventListener("click", () => void save());
+// Android only: the working copy is sandboxed, so exporting needs its own button.
+saveAsBtn.addEventListener("click", () => void saveAs());
 
 // ---------- Toast ----------
 let toastTimer: number | undefined;
@@ -1014,18 +1008,20 @@ interface ToolbarButton {
   locked?: boolean;
   /** Dropped entirely on Android: the feature cannot work there. */
   androidHidden?: boolean;
+  /** Shown *only* on Android: the feature only exists there. */
+  androidOnly?: boolean;
 }
 const TOOLBAR_BUTTONS: ToolbarButton[] = [
   { id: "open-btn", label: "打开文件", glyph: "📂" },
-  // Hidden on Android: the folder browser needs a directory grant, and a
-  // single SAF document pick cannot provide one, so it would always fail.
-  { id: "files-btn", label: "文件浏览器", glyph: "🗂", androidHidden: true },
+  { id: "files-btn", label: "文件浏览器", glyph: "🗂" },
   { id: "font-dec", label: "缩小字体", glyph: "A−" },
   { id: "font-inc", label: "放大字体", glyph: "A+" },
   { id: "wide-toggle", label: "宽版 / 窄版切换", glyph: "↔" },
   { id: "theme-toggle", label: "切换配色主题", glyph: "🖥️" },
   { id: "settings-btn", label: "设置", glyph: "⚙", locked: true },
   { id: "save-btn", label: "保存", glyph: "💾" },
+  // Android edits a sandbox copy, so writing a real file out needs its own step.
+  { id: "save-as-btn", label: "另存为", glyph: "📤", androidOnly: true },
   { id: "export-btn", label: "导出为 HTML", glyph: "⬇" },
   { id: "edit-toggle", label: "切换编辑模式", glyph: "✎" },
   { id: "toc-toggle", label: "切换大纲", glyph: "☰" },
@@ -1073,8 +1069,9 @@ function saveToolbarState(order: string[], hidden: Set<string>): void {
 }
 
 // Buttons whose visibility is driven by app state, not by the user:
-// Save only exists in edit mode, ✕ only once a document is open.
-const STATE_DRIVEN = new Set(["save-btn", "close-doc-btn"]);
+// Save only exists in edit mode, ✕ only once a document is open, and "save as"
+// only on Android with a document loaded.
+const STATE_DRIVEN = new Set(["save-btn", "save-as-btn", "close-doc-btn"]);
 
 function applyToolbarLayout(): void {
   const order = readToolbarOrder();
@@ -1090,6 +1087,11 @@ function applyToolbarLayout(): void {
     if (!el) continue;
     // Buttons whose feature cannot work on this platform never appear.
     if (btn.androidHidden && IS_ANDROID) {
+      el.hidden = true;
+      continue;
+    }
+    // Mobile-only buttons stay out of the way on desktop.
+    if (btn.androidOnly && !IS_ANDROID) {
       el.hidden = true;
       continue;
     }
@@ -1117,6 +1119,7 @@ function renderToolbarList(): void {
     if (!btn) return;
     // Do not offer a toggle for something that can never appear here.
     if (btn.androidHidden && IS_ANDROID) return;
+    if (btn.androidOnly && !IS_ANDROID) return;
 
     const row = document.createElement("div");
     row.className = "tb-row" + (btn.locked ? " tb-locked" : "");
@@ -1765,16 +1768,38 @@ async function pickFile(): Promise<string | null> {
   const fs = await import("tauri-plugin-android-fs-api");
   // Returns an array; we asked for a single pick.
   const picked = await fs.showOpenFilePicker({
-    mimeTypes: ["text/markdown", "text/x-markdown", "text/plain"],
+    mimeTypes: [
+      "text/markdown",
+      "text/x-markdown",
+      "application/markdown",
+      "application/x-markdown",
+      "text/plain",
+      "application/octet-stream",
+    ],
     multiple: false,
     localOnly: true,
-    needWritePermission: true,
+    needWritePermission: false,
   });
   const uri = picked[0];
   if (!uri) return null;
-  // Keep the grant across restarts so "recent files" keeps working.
+  // Keep the grant across restarts so a later re-import can still read the file.
   await fs.persistPickerUriPermission(uri).catch(() => {});
-  return uri.uri;
+  return await importDocument(uri.uri);
+}
+
+/// Copy a `content://` document into app storage and return its local path.
+///
+/// Everything downstream (reading, editing, images, the folder browser) then
+/// works on an ordinary path, which is why those features exist on Android at
+/// all. The trade-off is that the copy is what gets edited; the original is
+/// untouched until the user explicitly exports.
+async function importDocument(uri: string): Promise<string> {
+  const doc = await invoke<{ path: string; name: string; cached: boolean }>(
+    "import_document",
+    { uri },
+  );
+  if (!doc.cached) toast(`已导入 ${doc.name}`);
+  return doc.path;
 }
 
 async function openViaDialog(): Promise<void> {
@@ -1800,7 +1825,12 @@ content.addEventListener("click", (ev) => {
 
 function getRecents(): string[] {
   try {
-    return JSON.parse(localStorage.getItem("recents") ?? "[]") as string[];
+    const list = JSON.parse(localStorage.getItem("recents") ?? "[]") as string[];
+    // On Android, entries written by older versions are `content://` URIs from
+    // before documents were imported; they can no longer be opened, so drop
+    // them instead of leaving dead links in the list.
+    if (IS_ANDROID) return list.filter((p) => !p.startsWith("content://"));
+    return list;
   } catch {
     return [];
   }
@@ -1831,7 +1861,7 @@ function renderRecents(): void {
     // A raw content:// URI is unreadable, so on Android the sub-line shows the
     // decoded document path (minus the file name, which the title already has).
     // Falling back to the name alone would just repeat the line above.
-    const sub = IS_ANDROID ? documentPathHint(p) : p;
+    const sub = IS_ANDROID ? "应用内副本" : p;
     if (sub && sub !== displayName(p)) {
       full.textContent = sub;
       a.append(name, full);
@@ -1859,7 +1889,6 @@ interface DirListing {
 }
 
 let filesOpen = localStorage.getItem("filesOpen") === "true";
-
 function dirOf(p: string): string {
   return p.replace(/[\\/][^\\/]*$/, "");
 }
@@ -1921,12 +1950,18 @@ window.addEventListener("blur", closeFileMenu);
 
 async function renderFiles(dir: string | null): Promise<void> {
   if (!dir) {
-    filesPanel.innerHTML = "";
-    const hint = document.createElement("div");
-    hint.className = "files-hint";
-    hint.textContent = "打开文件后可浏览其目录";
-    filesPanel.appendChild(hint);
-    return;
+    // Desktop: nothing to list yet, ask the user to open a file first.
+    // Android: every document lives in the import area, so show the whole
+    // library — that is the only browseable "folder" the app owns.
+    if (!IS_ANDROID) {
+      filesPanel.innerHTML = "";
+      const hint = document.createElement("div");
+      hint.className = "files-hint";
+      hint.textContent = "打开文件后可浏览其目录";
+      filesPanel.appendChild(hint);
+      return;
+    }
+    dir = "";
   }
   let listing: DirListing;
   try {
@@ -1939,23 +1974,32 @@ async function renderFiles(dir: string | null): Promise<void> {
 
   filesPanel.innerHTML = "";
 
-  // Editable full-path bar — type a folder and press Enter to jump there.
-  const pathInput = document.createElement("input");
-  pathInput.className = "files-path";
-  pathInput.value = listing.dir;
-  pathInput.spellcheck = false;
-  pathInput.title = listing.dir;
-  pathInput.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      const v = pathInput.value.trim();
-      if (v) void renderFiles(v);
-    } else if (ev.key === "Escape") {
-      pathInput.value = listing.dir;
-      pathInput.blur();
-    }
-  });
-  filesPanel.appendChild(pathInput);
+  if (IS_ANDROID) {
+    // The sandbox path is meaningless to a phone user, and there is no way to
+    // type a different one, so show a plain heading instead of an edit box.
+    const head = document.createElement("div");
+    head.className = "files-hint";
+    head.textContent = listing.dir;
+    filesPanel.appendChild(head);
+  } else {
+    // Editable full-path bar — type a folder and press Enter to jump there.
+    const pathInput = document.createElement("input");
+    pathInput.className = "files-path";
+    pathInput.value = listing.dir;
+    pathInput.spellcheck = false;
+    pathInput.title = listing.dir;
+    pathInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        const v = pathInput.value.trim();
+        if (v) void renderFiles(v);
+      } else if (ev.key === "Escape") {
+        pathInput.value = listing.dir;
+        pathInput.blur();
+      }
+    });
+    filesPanel.appendChild(pathInput);
+  }
 
   if (listing.parent) {
     filesPanel.appendChild(
@@ -1998,12 +2042,6 @@ function toggleFiles(): void {
   if (filesOpen) void renderFiles(currentPath ? dirOf(currentPath) : null);
 }
 filesBtn.addEventListener("click", toggleFiles);
-// Restore persisted state on load — except on Android, where the panel cannot
-// list anything and would just show a permanent error.
-if (filesOpen && IS_ANDROID) {
-  filesOpen = false;
-  localStorage.setItem("filesOpen", "false");
-}
 if (filesOpen) layout.classList.add("files-open");
 
 // ---------- Mermaid diagram lightbox (click to zoom/pan) ----------

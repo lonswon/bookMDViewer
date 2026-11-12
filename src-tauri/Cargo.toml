@@ -37,6 +37,8 @@ tauri-plugin-android-fs = { version = "=29.0.0", features = [
   "protocol_content",
   "legacy_storage_permission",
 ] }
+# Derives the per-document import directory from its source URI.
+sha2 = "0.10"
 
 # Smallest possible release binary.
 [profile.release]

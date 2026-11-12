@@ -24,6 +24,18 @@ pub struct DirListing {
     pub entries: Vec<DirEntry>,
 }
 
+/// Result of importing a `content://` document into app storage (Android).
+///
+/// `path` is an absolute path inside the app sandbox, usable by `read_md`,
+/// `write_md` and `list_dir` exactly like a desktop path.
+#[derive(Serialize)]
+pub struct ImportedDoc {
+    pub path: String,
+    pub name: String,
+    /// False when the source changed and had to be copied again.
+    pub cached: bool,
+}
+
 /// Holds the file we are currently viewing plus the live filesystem watcher.
 #[derive(Default)]
 pub struct AppState {
@@ -38,66 +50,63 @@ pub struct AppState {
     /// is single-instance) every *subsequent* file-open opens its own window
     /// instead of replacing the current document — matching Windows/Linux.
     pub claimed: Mutex<bool>,
-    /// Android: the `content://` URI of the open document.
-    #[cfg(target_os = "android")]
-    pub uri: Mutex<Option<String>>,
 }
 
 /// List sub-folders and Markdown files in a directory (for the file explorer).
 /// If `path` is a file, its parent directory is listed.
 ///
-/// On Android `path` is a `content://` document URI and the listing is limited
-/// to what the SAF grant allows us to see.
+/// On Android `path` is an ordinary path inside the app sandbox once the
+/// document has been imported, so the same code serves both platforms.
 #[tauri::command]
 fn list_dir(app: tauri::AppHandle, path: String) -> Result<DirListing, String> {
     #[cfg(target_os = "android")]
     {
-        return android::list_dir(&app, &path);
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        let p = PathBuf::from(&path);
-        let dir = if p.is_dir() {
-            p
-        } else {
-            p.parent().map(Path::to_path_buf).unwrap_or(p)
-        };
-
-        let mut entries = Vec::new();
-        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') {
-                continue; // skip hidden
-            }
-            let ep = entry.path();
-            let is_dir = ep.is_dir();
-            let is_md = ep
-                .extension()
-                .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
-                .unwrap_or(false);
-            if is_dir || is_md {
-                entries.push(DirEntry {
-                    name,
-                    path: ep.to_string_lossy().into_owned(),
-                    is_dir,
-                });
-            }
+        // An empty target means "everything imported so far".
+        if path.is_empty() {
+            return android::list_imported(&app);
         }
-        // Folders first, then files; alphabetical, case-insensitive.
-        entries.sort_by(|a, b| {
-            b.is_dir
-                .cmp(&a.is_dir)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
-
-        Ok(DirListing {
-            dir: dir.to_string_lossy().into_owned(),
-            parent: dir.parent().map(|p| p.to_string_lossy().into_owned()),
-            entries,
-        })
     }
+
+    let _ = app;
+    let p = PathBuf::from(&path);
+    let dir = if p.is_dir() {
+        p
+    } else {
+        p.parent().map(Path::to_path_buf).unwrap_or(p)
+    };
+
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue; // skip hidden
+        }
+        let ep = entry.path();
+        let is_dir = ep.is_dir();
+        let is_md = ep
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
+            .unwrap_or(false);
+        if is_dir || is_md {
+            entries.push(DirEntry {
+                name,
+                path: ep.to_string_lossy().into_owned(),
+                is_dir,
+            });
+        }
+    }
+    // Folders first, then files; alphabetical, case-insensitive.
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    Ok(DirListing {
+        dir: dir.to_string_lossy().into_owned(),
+        parent: dir.parent().map(|p| p.to_string_lossy().into_owned()),
+        entries,
+    })
 }
 
 /// Route a file-open request: the first file loads into the existing (empty)
@@ -169,13 +178,16 @@ fn frontend_ready(app: tauri::AppHandle, state: State<'_, AppState>) {
     }
 }
 
-/// Returns the file path (desktop) or `content://` URI (Android) the app was
-/// opened with, if any.
+/// Returns the file path the app was launched with, if any.
+///
+/// Android always returns `None`: documents arrive through the SAF picker
+/// rather than as launch arguments, and the intent hand-off is not wired up.
 #[tauri::command]
 fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
     #[cfg(target_os = "android")]
     {
-        return state.uri.lock().ok().and_then(|g| g.clone());
+        let _ = &state;
+        None
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -190,21 +202,22 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 /// Read a markdown file's raw text.
 ///
-/// Desktop: a filesystem path. Android: a `content://` URI from the SAF picker.
+/// Both platforms take an ordinary filesystem path: on Android the document has
+/// already been imported into app storage by `import_document`.
 #[tauri::command]
 fn read_md(app: tauri::AppHandle, state: State<'_, AppState>, path: String) -> Result<String, String> {
+    let _ = (&app, &state);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {path}: {e}"))?;
+    // Desktop keeps the raw text verbatim; Android drops the BOM because an
+    // imported document often comes from an editor that writes one.
     #[cfg(target_os = "android")]
     {
-        let text = android::read_text(&app, &path)?;
-        if let Ok(mut current) = state.uri.lock() {
-            *current = Some(path);
-        }
-        Ok(text)
+        return Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_string());
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (&app, &state);
-        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read {path}: {e}"))
+        Ok(text)
     }
 }
 
@@ -231,16 +244,29 @@ fn open_new_window(path: String) -> Result<(), String> {
 }
 
 /// Write text back to a markdown file.
+///
+/// On Android this writes the imported copy inside app storage, never the
+/// user's original document — exporting is a separate, explicit step.
 #[tauri::command]
 fn write_md(app: tauri::AppHandle, path: String, content: String) -> Result<(), String> {
+    let _ = app;
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write {path}: {e}"))
+}
+
+/// Import a `content://` document into app storage (Android only).
+///
+/// Returns the absolute path inside the sandbox, which the rest of the app then
+/// treats exactly like a desktop file path.
+#[tauri::command]
+fn import_document(app: tauri::AppHandle, uri: String) -> Result<ImportedDoc, String> {
     #[cfg(target_os = "android")]
     {
-        return android::write_text(&app, &path, &content);
+        return android::import_document(&app, &uri);
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = app;
-        std::fs::write(&path, content).map_err(|e| format!("Failed to write {path}: {e}"))
+        let _ = (&app, &uri);
+        Err("Not supported on desktop".into())
     }
 }
 
@@ -368,6 +394,7 @@ pub fn run() {
             read_md,
             write_md,
             list_dir,
+            import_document,
             open_new_window,
             watch_file,
             request_storage_permission,
