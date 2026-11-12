@@ -338,6 +338,12 @@ fn is_markdown(path: &Path) -> bool {
 /// SAF display names come from the providing app, so treat them as untrusted:
 /// a name containing separators or `..` would otherwise escape the import
 /// directory.
+///
+/// An extensionless name gets `.md` appended: the browser lists only Markdown,
+/// so the file would otherwise be imported and then be invisible. A name that
+/// already carries some other extension is left alone — it was chosen
+/// deliberately through the `text/plain` filter, and renaming it would be
+/// worse than hiding it.
 fn sanitize_name(name: &str) -> String {
     let tail = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
     let cleaned: String = tail
@@ -346,10 +352,12 @@ fn sanitize_name(name: &str) -> String {
         .collect();
     let cleaned = cleaned.trim_matches('.').trim();
     if cleaned.is_empty() {
-        "Document.md".to_string()
-    } else {
-        cleaned.to_string()
+        return "Document.md".to_string();
     }
+    if Path::new(cleaned).extension().is_some() {
+        return cleaned.to_string();
+    }
+    format!("{cleaned}.md")
 }
 
 /// Stable directory key for a source URI.

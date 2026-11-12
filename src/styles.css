@@ -1725,3 +1725,12 @@ body.docked-toolbar #statusbar #sb-path {
   margin: 0;
   border-radius: 0;
 }
+
+/* Header for the imported-document list. Android only: on desktop the panel
+   shows an editable path box instead. */
+body.docked-toolbar .files-heading {
+  padding: 10px 12px 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}

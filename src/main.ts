@@ -1978,7 +1978,7 @@ async function renderFiles(dir: string | null): Promise<void> {
     // The sandbox path is meaningless to a phone user, and there is no way to
     // type a different one, so show a plain heading instead of an edit box.
     const head = document.createElement("div");
-    head.className = "files-hint";
+    head.className = "files-heading";
     head.textContent = listing.dir;
     filesPanel.appendChild(head);
   } else {
