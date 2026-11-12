@@ -63,12 +63,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Markdown Viewer ${{ github.ref_name }}"
+          # Only a tag may create a Release. A manual `workflow_dispatch` on a
+          # branch still needs to *build* (that is how Android gets tested), but
+          # it must not publish: `github.ref_name` on a branch is the branch name,
+          # which previously created a public Release called "feat/..." and left
+          # stray tags behind.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Markdown Viewer {0}', github.ref_name) || '' }}
           releaseBody: "Download the installer for your platform below."
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+          # On branch runs there is no release to attach to, so keep the bundles
+          # as workflow artifacts instead — a manual build stays downloadable
+          # without publishing anything to the Releases page.
+          uploadWorkflowArtifacts: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          uploadUpdaterJson: ${{ startsWith(github.ref, 'refs/tags/') }}
 
       # Tauri's CLI unconditionally appends libwebkit2gtk-4.1-0 / libgtk-3-0 to
       # the deb Depends field on Linux, ignoring bundle.linux.deb.depends. To let
